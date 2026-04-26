@@ -252,7 +252,7 @@ export default function LoginPage() {
         {tab === "register" && (
           <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <Field label="Họ và tên" error={errors.name}>
-              <input className="input-pk" placeholder="Nguyễn Thị Linh" value={form.name} onChange={e => set("name", e.target.value)} />
+              <input className="input-pk" placeholder="Trịnh Minh Phương" value={form.name} onChange={e => set("name", e.target.value)} />
             </Field>
             <Field label="Email" error={errors.email}>
               <input className="input-pk" type="email" placeholder="email@example.com" value={form.email} onChange={e => set("email", e.target.value)} />
