@@ -1,0 +1,117 @@
+name: pinkylab
+
+services:
+  # ==========================================
+  # DATABASE SERVICES
+  # ==========================================
+  mysql:
+    image: mysql:8
+    container_name: mysql-db-pinkylab
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+    networks:
+      - app-net
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:alpine
+    container_name: redis-cache-pinkylab
+    restart: unless-stopped
+    command: >
+      sh -c '
+      if [ -n "${REDIS_PASSWORD}" ]; then
+        exec redis-server --requirepass "${REDIS_PASSWORD}";
+      else
+        exec redis-server;
+      fi
+      '
+    ports:
+      - "6380:6379"
+    networks:
+      - app-net
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "if [ -n \"${REDIS_PASSWORD}\" ]; then redis-cli -a \"${REDIS_PASSWORD}\" ping | grep PONG || exit 1; else redis-cli ping | grep PONG || exit 1; fi"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ==========================================
+  # APPLICATION SERVICES
+  # ==========================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-pinkylab
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      SPRING_SERVER_PORT: 8080
+      APP_FRONTEND_ORIGIN: http://localhost:5173
+      # Database Config - override to use Docker internal network
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+      # Redis Config - override to use Docker internal network
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      VNPAY_RETURN_URL: http://localhost:5173/payment/vnpay/return
+    networks:
+      - app-net
+
+  # ==========================================
+  # FRONTEND SERVICE (uncomment khi FE có Dockerfile)
+  # ==========================================
+  # frontend:
+  #   build:
+  #     context: ../FE/pinkylab
+  #     dockerfile: Dockerfile
+  #   container_name: frontend-pinkylab
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:80"
+  #   depends_on:
+  #     - app
+  #   networks:
+  #     - app-net
+
+networks:
+  app-net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    name: pinkylab_mysql_data
+  redis_data:
+    name: pinkylab_redis_data
