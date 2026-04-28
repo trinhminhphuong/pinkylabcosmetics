@@ -184,8 +184,8 @@ export default function Navbar() {
             { label: "SẢN PHẨM MỚI", link: "/products?cat=SẢN PHẨM MỚI" },
             { label: "❤️ DEAL HOT DƯỚI 100K ❤️", link: "/products?maxPrice=100000" },
             { label: "SKIN CARE", link: "/products?cat=Skincare" },
-            { label: "MAKE UP", link: "/products?cat=Makeup" },
-            { label: "AI INSIGHTS", link: "/ai-analytics" },
+            // { label: "MAKE UP", link: "/products?cat=Makeup" },
+            // { label: "AI INSIGHTS", link: "/ai-analytics" },
             { label: "TRA CỨU ĐƠN HÀNG", link: "/account" },
           ].map(item => (
             <Link key={item.label} to={item.link} 

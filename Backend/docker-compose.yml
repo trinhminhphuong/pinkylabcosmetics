@@ -56,39 +56,39 @@ services:
   # ==========================================
   # APPLICATION SERVICES
   # ==========================================
-  # app:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   container_name: app-pinkylab
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8080:8080"
-  #   depends_on:
-  #     mysql:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     SPRING_SERVER_PORT: 8080
-  #     APP_FRONTEND_ORIGIN: http://localhost:5173
-  #     # Database Config - override to use Docker internal network
-  #     SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh
-  #     SPRING_DATASOURCE_USERNAME: root
-  #     SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-pinkylab
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      SPRING_SERVER_PORT: 8080
+      APP_FRONTEND_ORIGIN: http://localhost:5173
+      # Database Config - override to use Docker internal network
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
 
-  #     # Redis Config - override to use Docker internal network
-  #     SPRING_REDIS_HOST: redis
-  #     SPRING_REDIS_PORT: 6379
-  #     SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
-  #     SPRING_DATA_REDIS_HOST: redis
-  #     SPRING_DATA_REDIS_PORT: 6379
-  #     SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
-  #     VNPAY_RETURN_URL: http://localhost:5173/payment/vnpay/return
-  #   networks:
-  #     - app-net
+      # Redis Config - override to use Docker internal network
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      VNPAY_RETURN_URL: http://localhost:5173/payment/vnpay/return
+    networks:
+      - app-net
 
   # ==========================================
   # FRONTEND SERVICE (uncomment khi FE có Dockerfile)

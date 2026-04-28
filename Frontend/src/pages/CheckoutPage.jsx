@@ -257,13 +257,13 @@ export default function CheckoutPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                 <h3 style={{ fontWeight: 700, marginBottom: 4 }}>Thông tin liên hệ</h3>
                 <Field label="Họ và tên *" error={errors.name}>
-                  <input className="input-pk" placeholder="Trịnh Minh Phương" value={form.name} onChange={e => set("name", e.target.value)} />
+                  <input className="input-pk" placeholder="Vui lòng nhập họ tên" value={form.name} onChange={e => set("name", e.target.value)} />
                 </Field>
                 <Field label="Email *" error={errors.email}>
-                  <input className="input-pk" type="email" placeholder="email@example.com" value={form.email} onChange={e => set("email", e.target.value)} />
+                  <input className="input-pk" type="email" placeholder="Vui lòng nhập email" value={form.email} onChange={e => set("email", e.target.value)} />
                 </Field>
                 <Field label="Số điện thoại *" error={errors.phone}>
-                  <input className="input-pk" placeholder="0901 234 567" value={form.phone} onChange={e => set("phone", e.target.value)} />
+                  <input className="input-pk" placeholder="Vui lòng nhập số điện thoại" value={form.phone} onChange={e => set("phone", e.target.value)} />
                 </Field>
                 <Field label="Địa chỉ giao hàng *" error={errors.address}>
                   <input className="input-pk" placeholder="Số nhà, đường, phường, quận..." value={form.address} onChange={e => set("address", e.target.value)} />

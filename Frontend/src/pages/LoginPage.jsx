@@ -21,7 +21,7 @@ export default function LoginPage() {
   const validateLogin = () => {
     const e = {};
     if (!form.email.includes("@")) e.email = "Email không hợp lệ";
-    if (form.password.length < 6) e.password = "Mật khẩu phải có ít nhất 6 ký tự";
+    if (form.password.length < 8) e.password = "Mật khẩu phải có ít nhất 8 ký tự";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -30,7 +30,7 @@ export default function LoginPage() {
     const e = {};
     if (!form.name.trim())         e.name = "Vui lòng nhập họ tên";
     if (!form.email.includes("@")) e.email = "Email không hợp lệ";
-    if (form.password.length < 6)  e.password = "Mật khẩu phải có ít nhất 6 ký tự";
+    if (form.password.length < 8)  e.password = "Mật khẩu phải có ít nhất 8 ký tự";
     if (form.password !== form.confirmPw) e.confirmPw = "Mật khẩu không khớp";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -107,7 +107,7 @@ export default function LoginPage() {
     try {
       const nameParts = form.name.trim().split(" ");
       let lastName = form.name.trim();
-      let firstName = "Khách";
+      let firstName = "Khách:"; //tên khách
       if (nameParts.length > 1) {
         lastName = nameParts.pop();
         firstName = nameParts.join(" ");
@@ -228,7 +228,7 @@ export default function LoginPage() {
         {tab === "login" && (
           <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <Field label="Email" error={errors.email}>
-              <input className="input-pk" type="email" placeholder="email@example.com" value={form.email} onChange={e => set("email", e.target.value)} />
+              <input className="input-pk" type="email" placeholder="Vui lòng nhập email" value={form.email} onChange={e => set("email", e.target.value)} />
             </Field>
             <Field label="Mật khẩu" error={errors.password}>
               <div style={{ position: "relative" }}>
@@ -252,14 +252,14 @@ export default function LoginPage() {
         {tab === "register" && (
           <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <Field label="Họ và tên" error={errors.name}>
-              <input className="input-pk" placeholder="Trịnh Minh Phương" value={form.name} onChange={e => set("name", e.target.value)} />
+              <input className="input-pk" placeholder="Vui lòng nhập họ và tên" value={form.name} onChange={e => set("name", e.target.value)} />
             </Field>
             <Field label="Email" error={errors.email}>
-              <input className="input-pk" type="email" placeholder="email@example.com" value={form.email} onChange={e => set("email", e.target.value)} />
+              <input className="input-pk" type="email" placeholder="Vui lòng nhập email" value={form.email} onChange={e => set("email", e.target.value)} />
             </Field>
             <Field label="Mật khẩu" error={errors.password}>
               <div style={{ position: "relative" }}>
-                <input className="input-pk" type={showPw ? "text" : "password"} placeholder="Ít nhất 6 ký tự" value={form.password} onChange={e => set("password", e.target.value)} style={{ paddingRight: 44 }} />
+                <input className="input-pk" type={showPw ? "text" : "password"} placeholder="Ít nhất 8 ký tự" value={form.password} onChange={e => set("password", e.target.value)} style={{ paddingRight: 44 }} />
                 <button type="button" onClick={() => setShowPw(s => !s)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -280,7 +280,7 @@ export default function LoginPage() {
             <h3 style={{ textAlign: "center", fontSize: "1.1rem", fontWeight: 700 }}>Quên Mật Khẩu</h3>
             <p style={{ textAlign: "center", fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: 8 }}>Vui lòng nhập email đăng ký để nhận mã OTP.</p>
             <Field label="Email" error={errors.email}>
-              <input className="input-pk" type="email" placeholder="email@example.com" value={form.email} onChange={e => set("email", e.target.value)} />
+              <input className="input-pk" type="email" placeholder="Vui lòng nhập email" value={form.email} onChange={e => set("email", e.target.value)} />
             </Field>
             <button type="submit" disabled={loading} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "13px" }}>
               {loading ? "Đang xử lý..." : "Gửi mã OTP"}
@@ -321,7 +321,7 @@ export default function LoginPage() {
             <h3 style={{ textAlign: "center", fontSize: "1.1rem", fontWeight: 700 }}>Đặt Mật Khẩu Mới</h3>
             <Field label="Mật khẩu mới" error={errors.password}>
               <div style={{ position: "relative" }}>
-                <input className="input-pk" type={showPw ? "text" : "password"} placeholder="Ít nhất 6 ký tự" value={form.password} onChange={e => set("password", e.target.value)} style={{ paddingRight: 44 }} />
+                <input className="input-pk" type={showPw ? "text" : "password"} placeholder="Ít nhất 8 ký tự" value={form.password} onChange={e => set("password", e.target.value)} style={{ paddingRight: 44 }} />
                 <button type="button" onClick={() => setShowPw(s => !s)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>

@@ -230,3 +230,15 @@ INSERT INTO product_image (product_id, image_url) VALUES (UNHEX(REPLACE('dee5df0
 INSERT INTO product_image (product_id, image_url) VALUES (UNHEX(REPLACE('c197e332-d8fc-459b-aa90-3431f979378d', '-', '')), 'https://images.unsplash.com/photo-1625014618427-fbc980b974f5?w=500&q=80');
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+INSERT INTO payment_method (id, name, is_active) 
+VALUES (UUID_TO_BIN(UUID()), 'VNPAY', true);
+
+INSERT INTO shipping_method (id, name, price, description, is_active) 
+VALUES (
+    UUID_TO_BIN(UUID()), 
+    'Nhận tại cửa hàng', 
+    0.0, 
+    'Khách hàng đến trực tiếp cửa hàng để nhận đồ', 
+    true
+);
