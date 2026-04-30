@@ -68,9 +68,9 @@ public class WebInformationServiceImpl implements WebInformationService {
                     .qualifiedTeamMembers(0)
                     .monthlyOrders(0)
                     .companyName("Công Ty TNHH")
-                    .slogan("Chăm sóc sức khỏe")
+                    .slogan("Chăm sóc sắc đẹp")
                     .phone("0123456789")
-                    .email("contact@nguyencham.com")
+                    .email("contact@minhphuong.com")
                     .address("Vietnam")
                     .copyrightText("Copyright © 2026")
                     .build();

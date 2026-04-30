@@ -27,7 +27,7 @@ public class CreateUserRequestDto {
     @Pattern(regexp = "^(?=.*[0-9])(?=.*[a-z])(?=\\S+$).{8,}$", message = ErrorMessage.INVALID_FORMAT_PASSWORD)
     String password;
 
-    @Schema(description = "Họ/Tên đệm", example = "Phạm Văn")
+    @Schema(description = "Họ/Tên đệm", example = "Trịnh Minh")
     String firstName;
 
     @Schema(description = "Tên", example = "A")

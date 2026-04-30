@@ -19,7 +19,7 @@ public class UpdateUserRequestDto {
     @Schema(description = "Email người dùng", example = "user@gmail.com")
     String email;
 
-    @Schema(description = "Họ/Tên đệm", example = "Phạm Văn")
+    @Schema(description = "Họ/Tên đệm", example = "Trịnh Minh")
     String firstName;
 
     @Schema(description = "Tên", example = "A")
