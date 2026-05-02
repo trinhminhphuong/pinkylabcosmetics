@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth, useWishlist, useCart, useToast } from "../context/store";
 import { formatPrice } from "../data/products";
-import { LogOut, Heart, ShoppingBag, Package, ChevronRight, Settings, Eye, Camera } from "lucide-react";
+import { LogOut, Heart, ShoppingBag, Package, ChevronRight, Settings, Eye, Camera, LayoutDashboard } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import { OrderService, ProductService, UserService } from "../services";
 
@@ -12,6 +12,18 @@ export default function AccountPage() {
   const { count } = useCart();
   const { show } = useToast();
   const navigate = useNavigate();
+
+  // Check if current user is admin from JWT
+  const isAdmin = (() => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return false;
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      const roles = payload.scope || payload.roles || payload.authorities || "";
+      const hasRole = typeof roles === "string" ? roles.includes("ADMIN") : Array.isArray(roles) && roles.some(r => r.includes("ADMIN"));
+      return hasRole || payload.sub === "admin@minhphuong.com";
+    } catch { return false; }
+  })();
 
   const [activeTab, setActiveTab] = useState("dashboard"); 
   const [orders, setOrders] = useState([]);
@@ -243,6 +255,25 @@ export default function AccountPage() {
                 </div>
               ))}
             </div>
+
+            {/* Admin panel button - only for admins */}
+            {isAdmin && (
+              <Link
+                to="/admin"
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  padding: "12px 16px", borderRadius: "var(--radius-md)",
+                  background: "linear-gradient(135deg, var(--pk-pink), #d44070)",
+                  color: "#fff", fontWeight: 600, fontSize: "0.875rem",
+                  textDecoration: "none", boxShadow: "0 4px 12px rgba(232,88,122,0.35)",
+                  transition: "all 0.2s"
+                }}
+                onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 20px rgba(232,88,122,0.45)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 12px rgba(232,88,122,0.35)"; }}
+              >
+                <LayoutDashboard size={16} /> Trang quản trị
+              </Link>
+            )}
 
             <button onClick={logout} className="btn-outline" style={{ width: "100%", justifyContent: "center", color: "#ef4444", borderColor: "#ef4444" }}>
               <LogOut size={15} /> Đăng xuất

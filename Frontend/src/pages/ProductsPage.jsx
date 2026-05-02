@@ -3,13 +3,43 @@ import { useSearchParams, Link } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
 import { formatPrice } from "../data/products";
 import ProductCard from "../components/ProductCard";
-import { ProductService, CategoryService, BrandService } from "../services";
+import { ProductService, CategoryService, BrandService, PromotionService } from "../services";
+
+/** Tính giá giảm từ danh sách promotions */
+function applyActivePromotion(basePrice, promotions) {
+  const now = new Date();
+  const active = (promotions || []).find(p => {
+    const isActive = p.active ?? p.isActive ?? false;
+    if (!isActive) return false;
+    try { return new Date(p.startDate) <= now && new Date(p.endDate) >= now; }
+    catch { return false; }
+  });
+  if (!active) return { price: basePrice, originalPrice: null };
+  const val = Number(active.discountValue) || 0;
+  const discounted = (active.discountType === "PERCENTAGE" || active.discountType === "percent")
+    ? Math.round(basePrice * (1 - val / 100))
+    : Math.max(0, basePrice - val);
+  return { price: discounted, originalPrice: basePrice };
+}
 
 export default function ProductsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [sort, setSort] = useState("Bán chạy");
+  // Sort mặc định là "Mới nhất" khi vào từ SAN PHAM MOI, ngược lại là "Bán chạy"
+  const defaultSort = (searchParams.get("cat") || "").toUpperCase().includes("MỚI") ? "Mới nhất" : "Bán chạy";
+  const [sort, setSort] = useState(defaultSort);
   
   const currentCat = searchParams.get("cat") || "SẢN PHẨM MỚI";
+  
+  // Đồng bộ sort khi URL thay đổi (VD: bấm "SẢN PHẨM MỚI" trên menu khi đang ở trang products)
+  useEffect(() => {
+    const catParam = searchParams.get("cat") || "";
+    if (catParam.toUpperCase().includes("MỚI")) {
+      setSort("Mới nhất");
+    } else if (catParam.toUpperCase().includes("BEST SELLER")) {
+      setSort("Bán chạy");
+    }
+  }, [searchParams]);
+
   const searchQuery = searchParams.get("q") || "";
   const maxPriceQuery = searchParams.get("maxPrice");
   const brandParam = searchParams.get("brand") || "";
@@ -59,15 +89,9 @@ export default function ProductsPage() {
   // Fetch Products
   useEffect(() => {
     setLoading(true);
-    const params = {
-       pageNum: 0,
-       pageSize: 100,
-    };
-    
-    ProductService.getAllProducts(params)
-      .then(res => {
+    ProductService.getAllProducts({ pageNum: 0, pageSize: 100 })
+      .then(async res => {
          if (res) {
-           // Support multiple response shapes from backend
            const data = res.data || res;
            let arr = [];
            if (Array.isArray(data)) arr = data;
@@ -83,16 +107,28 @@ export default function ProductsPage() {
            }
            
            if (arr.length > 0) {
-             arr = arr.map(p => ({
-               ...p,
-               price: p.price || p.oldPrice || 0,
-               originalPrice: p.oldPrice ? Math.round(p.oldPrice * 1.2) : null,
-               inStock: (p.stock ?? 1) > 0,
-               images: p.imageUrl || p.images || (p.image ? [p.image] : []),
-               image: (p.imageUrl && p.imageUrl[0]) || p.image || null,
-               categoryName: p.category?.name || (typeof p.category === "string" ? p.category : "") || "",
-               category: p.category?.name || p.category || "",
-             }));
+             // Fetch promotions song song cho tất cả sản phẩm
+             const promoResults = await Promise.allSettled(
+               arr.map(p => PromotionService.getPromotionsByProduct(p.id))
+             );
+             arr = arr.map((p, i) => {
+               const basePrice = p.price || p.oldPrice || 0;
+               let priceInfo = { price: basePrice, originalPrice: null };
+               if (promoResults[i].status === "fulfilled") {
+                 const promos = promoResults[i].value?.data || promoResults[i].value || [];
+                 priceInfo = applyActivePromotion(basePrice, Array.isArray(promos) ? promos : []);
+               }
+               return {
+                 ...p,
+                 price: priceInfo.price,
+                 originalPrice: priceInfo.originalPrice,
+                 inStock: (p.stock ?? 1) > 0,
+                 images: p.imageUrl || p.images || (p.image ? [p.image] : []),
+                 image: (p.imageUrl && p.imageUrl[0]) || p.image || null,
+                 categoryName: p.category?.name || (typeof p.category === "string" ? p.category : "") || "",
+                 category: p.category?.name || p.category || "",
+               };
+             });
            }
            setProducts(arr);
          }
@@ -152,8 +188,23 @@ export default function ProductsPage() {
     }
 
     // Sort
-    if (sort === "Giá thấp đến cao") result = [...result].sort((a, b) => a.price - b.price);
-    if (sort === "Giá cao đến thấp") result = [...result].sort((a, b) => b.price - a.price);
+    if (sort === "Bán chạy") {
+      // Sắp xếp theo số đã bán giảm dần, sản phẩm không có số liệu xuống cuối
+      result = [...result].sort((a, b) => (b.sold ?? b.totalSold ?? b.salesCount ?? 0) - (a.sold ?? a.totalSold ?? a.salesCount ?? 0));
+    } else if (sort === "Mới nhất") {
+      // Sắp xếp theo createdAt giảm dần (mới nhất lên đầu)
+      result = [...result].sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : (a.id ? 0 : -1);
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : (b.id ? 0 : -1);
+        if (tb !== ta) return tb - ta;
+        // Fallback: so sánh ID (UUID mới hơn = lại gần cuối alphabet)
+        return (b.id || "").localeCompare(a.id || "");
+      });
+    } else if (sort === "Giá thấp đến cao") {
+      result = [...result].sort((a, b) => a.price - b.price);
+    } else if (sort === "Giá cao đến thấp") {
+      result = [...result].sort((a, b) => b.price - a.price);
+    }
 
     return result;
   }, [products, searchQuery, currentCat, sort, activePrice, selectedBrands, maxPriceQuery]);

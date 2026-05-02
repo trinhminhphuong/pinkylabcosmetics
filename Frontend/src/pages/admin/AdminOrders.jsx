@@ -10,7 +10,7 @@ import { useToast } from "../../context/store";
 //   paymentMethodName, orderDate, createdAt, note, subtotal, shippingFee, discountPercentage
 
 export default function AdminOrders() {
-  const [orders, setOrders] = useState([]);
+  const [allOrders, setAllOrders] = useState([]);   // toàn bộ đơn hàng
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState("");
@@ -21,29 +21,40 @@ export default function AdminOrders() {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [pageSize] = useState(10);
 
   const { show } = useToast();
 
-  const fetchOrders = useCallback(async (page) => {
+  const fetchOrders = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await OrderService.getAllOrders({ pageNum: page + 1, pageSize });
+      const res = await OrderService.getAllOrders({ pageNum: 1, pageSize: 9999 });
       const data = res?.data;
-      setOrders(data?.items || data?.content || []);
-      setTotalPages(data?.meta?.totalPages || data?.totalPages || 1);
+      const items = data?.items || data?.content || [];
+      // Sắp xếp mới nhất lên đầu
+      const sorted = [...items].sort((a, b) => {
+        const ta = a.createdAt || a.orderDate || "";
+        const tb = b.createdAt || b.orderDate || "";
+        return tb.localeCompare(ta);
+      });
+      setAllOrders(sorted);
     } catch (err) {
       console.error(err);
       show("Lỗi khi tải danh sách đơn hàng");
     } finally {
       setIsLoading(false);
     }
-  }, [pageSize, show]);
+  }, [show]);
 
   useEffect(() => {
-    fetchOrders(currentPage);
-  }, [currentPage, fetchOrders]);
+    fetchOrders();
+  }, [fetchOrders]);
+
+  // Reset về trang 0 khi thay đổi filter/search
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchTerm, statusFilter]);
+
 
   const openModal = (type, order) => {
     setModalType(type);
@@ -63,7 +74,7 @@ export default function AdminOrders() {
     try {
       await OrderService.updateOrderStatus(selectedOrder.id, { status: newStatus });
       show("Cập nhật trạng thái thành công!");
-      fetchOrders(currentPage);
+      fetchOrders();
       closeModal();
     } catch (err) {
       console.error(err);
@@ -99,14 +110,35 @@ export default function AdminOrders() {
     return order.billingAddress?.companyName || order.shippingAddress?.companyName || "Khách hàng";
   };
 
-  const filteredOrders = orders.filter((o) => {
-    const term = searchTerm.toLowerCase();
-    const id = (o.orderNumber || o.id || "").toLowerCase();
-    const name = getCustomerName(o).toLowerCase();
-    const matchSearch = !term || id.includes(term) || name.includes(term);
+  // Filter toàn bộ (search + status) rồi client-side paginate
+  const filteredOrders = allOrders.filter((o) => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term && !statusFilter) return true;
+
     const matchStatus = !statusFilter || o.status === statusFilter;
+    if (!term) return matchStatus;
+
+    const addr = o.shippingAddress || o.billingAddress || {};
+    const productNames = (o.orderItems || []).map(i => (i.productName || "").toLowerCase()).join(" ");
+
+    const matchSearch = [
+      o.orderNumber || "",                            // Mã đơn
+      o.id || "",                                     // ID đơn
+      getCustomerName(o),                             // Tên khách
+      addr.phone || addr.phoneNumber || "",           // SĐT
+      addr.streetAddress || "",                       // Địa chỉ
+      addr.state || "",                               // Tỉnh/thành
+      addr.country || "",                             // Quốc gia
+      o.paymentMethodName || "",                      // Phương thức TT
+      productNames,                                   // Tên sản phẩm trong đơn
+      o.note || "",                                   // Ghi chú
+    ].some(field => field.toLowerCase().includes(term));
+
     return matchSearch && matchStatus;
   });
+
+  const effectiveTotalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
+  const displayedOrders = filteredOrders.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   return (
     <div>
@@ -121,7 +153,7 @@ export default function AdminOrders() {
             <Search size={18} color="var(--text-muted)" />
             <input
               type="text"
-              placeholder="Tìm theo mã đơn, tên khách..."
+              placeholder="Tìm mã đơn, tên khách, SĐT, địa chỉ, sản phẩm..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{ border: "none", background: "transparent", outline: "none", width: "100%", fontSize: "0.9rem" }}
@@ -154,7 +186,7 @@ export default function AdminOrders() {
             <tbody>
               {isLoading ? (
                 <tr><td colSpan="6" style={{ textAlign: "center", padding: "40px" }}><Loader size={30} className="spin" color="var(--pk-pink)" /></td></tr>
-              ) : filteredOrders.map((order) => {
+              ) : displayedOrders.map((order) => {
                 const sd = getStatusDisplay(order.status);
                 return (
                   <tr key={order.id} style={{ borderBottom: "1px solid var(--border)", transition: "background 0.2s" }}
@@ -188,7 +220,7 @@ export default function AdminOrders() {
                   </tr>
                 );
               })}
-              {!isLoading && filteredOrders.length === 0 && (
+              {!isLoading && displayedOrders.length === 0 && (
                 <tr><td colSpan="6" style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)" }}>Không tìm thấy đơn hàng</td></tr>
               )}
             </tbody>
@@ -196,16 +228,19 @@ export default function AdminOrders() {
         </div>
 
         {/* Pagination */}
-        {!isLoading && totalPages >= 1 && (
+        {!isLoading && effectiveTotalPages >= 1 && (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-            <div style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>Trang {currentPage + 1} / {totalPages}</div>
+            <div style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>
+              Trang {currentPage + 1} / {effectiveTotalPages}
+              {(searchTerm || statusFilter) && <span style={{ marginLeft: 8, color: "var(--pk-pink)", fontSize: "0.82rem" }}>({filteredOrders.length} đơn)</span>}
+            </div>
             <div style={{ display: "flex", gap: "8px" }}>
               <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}
                 style={{ display: "flex", alignItems: "center", gap: "4px", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: currentPage === 0 ? "var(--surface-2)" : "#fff", color: currentPage === 0 ? "var(--text-muted)" : "var(--text-main)", cursor: currentPage === 0 ? "not-allowed" : "pointer" }}>
                 <ChevronLeft size={16} /> Trước
               </button>
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1}
-                style={{ display: "flex", alignItems: "center", gap: "4px", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: currentPage >= totalPages - 1 ? "var(--surface-2)" : "#fff", color: currentPage >= totalPages - 1 ? "var(--text-muted)" : "var(--text-main)", cursor: currentPage >= totalPages - 1 ? "not-allowed" : "pointer" }}>
+              <button onClick={() => setCurrentPage(p => Math.min(effectiveTotalPages - 1, p + 1))} disabled={currentPage >= effectiveTotalPages - 1}
+                style={{ display: "flex", alignItems: "center", gap: "4px", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: currentPage >= effectiveTotalPages - 1 ? "var(--surface-2)" : "#fff", color: currentPage >= effectiveTotalPages - 1 ? "var(--text-muted)" : "var(--text-main)", cursor: currentPage >= effectiveTotalPages - 1 ? "not-allowed" : "pointer" }}>
                 Sau <ChevronRight size={16} />
               </button>
             </div>

@@ -3,7 +3,24 @@ import ProductCard from "../components/ProductCard";
 import AiRecommendations from "../components/AiRecommendations";
 import { useState, useEffect } from "react";
 import { ChevronRight, ChevronLeft, Zap } from "lucide-react";
-import { ProductService, CategoryService, BrandService } from "../services";
+import { ProductService, CategoryService, BrandService, PromotionService } from "../services";
+
+/** Tính giá giảm từ promotions active */
+function applyActivePromotion(basePrice, promotions) {
+  const now = new Date();
+  const active = (promotions || []).find(p => {
+    const isActive = p.active ?? p.isActive ?? false;
+    if (!isActive) return false;
+    try { return new Date(p.startDate) <= now && new Date(p.endDate) >= now; }
+    catch { return false; }
+  });
+  if (!active) return { price: basePrice, originalPrice: null };
+  const val = Number(active.discountValue) || 0;
+  const discounted = (active.discountType === "PERCENTAGE" || active.discountType === "percent")
+    ? Math.round(basePrice * (1 - val / 100))
+    : Math.max(0, basePrice - val);
+  return { price: discounted, originalPrice: basePrice };
+}
 
 const BANNERS = [
   "https://images.unsplash.com/photo-1612817288484-6f916006741a?w=1920&q=80",
@@ -26,11 +43,11 @@ export default function HomePage() {
   const [bestSellerTab, setBestSellerTab] = useState(0);
   const [careTab, setCareTab] = useState(0);
   const [careCat, setCareCat] = useState(0);
-  const [hotPage, setHotPage] = useState(0);
+  const [brands, setBrands] = useState([]);
 
   useEffect(() => {
-    ProductService.getAllProducts({ pageNum: 0, pageSize: 20 })
-      .then(res => {
+    ProductService.getAllProducts({ pageNum: 1, pageSize: 100 })
+      .then(async res => {
         const data = res?.data || res;
         let arr = [];
         if (data?.items) arr = data.items;
@@ -39,13 +56,25 @@ export default function HomePage() {
         else if (Array.isArray(data)) arr = data;
 
         if (arr.length > 0) {
-          arr = arr.map(p => ({
-            ...p,
-            price: p.oldPrice || p.price || 0,
-            originalPrice: p.oldPrice ? p.oldPrice * 1.2 : null,
-            inStock: p.stock > 0,
-            category: p.category?.name || p.category || ""
-          }));
+          // Fetch promotions song song
+          const promoResults = await Promise.allSettled(
+            arr.map(p => PromotionService.getPromotionsByProduct(p.id))
+          );
+          arr = arr.map((p, i) => {
+            const basePrice = p.price || p.oldPrice || 0;
+            let priceInfo = { price: basePrice, originalPrice: null };
+            if (promoResults[i].status === "fulfilled") {
+              const promos = promoResults[i].value?.data || promoResults[i].value || [];
+              priceInfo = applyActivePromotion(basePrice, Array.isArray(promos) ? promos : []);
+            }
+            return {
+              ...p,
+              price: priceInfo.price,
+              originalPrice: priceInfo.originalPrice,
+              inStock: p.stock > 0,
+              category: p.category?.name || p.category || ""
+            };
+          });
         }
         setProducts(arr);
       })
@@ -54,11 +83,48 @@ export default function HomePage() {
     CategoryService.getAllCategories()
       .then(res => setCategories(Array.isArray(res?.data) ? res.data : (res?.data?.items || res?.data?.elements || res?.data?.content || [])))
       .catch(err => console.error("Error fetching categories:", err));
+
+    BrandService.getAllBrands({ pageNum: 1, pageSize: 100 })
+      .then(res => {
+        const data = res?.data;
+        const arr = data?.items || data?.content || [];
+        // Sort mới nhất lên đầu (fallback id-based)
+        const sorted = [...arr].sort((a, b) => {
+          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          if (tb !== ta) return tb - ta;
+          return (b.id || "").localeCompare(a.id || "");
+        });
+        setBrands(sorted);
+      })
+      .catch(err => console.error("Error fetching brands:", err));
   }, []);
 
-  const flashSaleProducts = products.slice(0, 5).map(p => ({ ...p, badge: "sale", inStock: true, originalPrice: p.price * 1.5 }));
-  const newProducts = products.slice(5, 10).map(p => ({ ...p, badge: "new" }));
-  const hotProducts = products.slice(10, 16);
+  // Flash sale: chỉ hiện sản phẩm có sale thật từ backend (price < oldPrice)
+  const flashSaleProducts = products
+    .filter(p => p.price && p.oldPrice && p.price < p.oldPrice)
+    .slice(0, 5)
+    .map(p => ({ ...p, badge: "sale" }));
+
+  // Sản phẩm mới: sort theo createdAt desc, lấy 5 sp đầu (không trùng flash sale)
+  const flashSaleIds = new Set(flashSaleProducts.map(p => p.id));
+  const newProducts = [...products]
+    .sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (tb !== ta) return tb - ta;
+      return (b.id || "").localeCompare(a.id || "");
+    })
+    .filter(p => !flashSaleIds.has(p.id))
+    .slice(0, 5)
+    .map(p => ({ ...p, badge: "new" }));
+
+  // Hot products: sort theo sold desc, không trùng với new/flash
+  const newIds = new Set(newProducts.map(p => p.id));
+  const hotProducts = [...products]
+    .sort((a, b) => (b.sold ?? b.totalSold ?? 0) - (a.sold ?? a.totalSold ?? 0))
+    .filter(p => !flashSaleIds.has(p.id) && !newIds.has(p.id))
+    .slice(0, 6);
 
   const bestSellerTabs = categories.length > 0 
     ? categories.slice(0, 6).map(c => typeof c === 'string' ? c.toUpperCase() : c.name?.toUpperCase() || "") 
@@ -125,68 +191,108 @@ export default function HomePage() {
         </button>
       </section>
 
-      {/* ── FLASH SALE ── */}
-      <section className="container" style={{ marginTop: 40, marginBottom: 40, padding: "0 20px" }}>
-        <div style={{ background: "var(--pk-pink-dark)", borderRadius: "12px 12px 0 0", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", color: "#fff" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <h2 style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "1.8rem", margin: 0, fontWeight: 800, fontStyle: "italic" }}>
-              Flash <Zap fill="#fff" size={24} /> Sale
-            </h2>
-            <span style={{ fontSize: "0.9rem", fontWeight: 600, letterSpacing: "0.05em" }}>ĐÃ KẾT THÚC</span>
+      {/* ── FLASH SALE ── chỉ hiện khi có sản phẩm đang sale thật */}
+      {flashSaleProducts.length > 0 && (
+        <section className="container" style={{ marginTop: 40, marginBottom: 40, padding: "0 20px" }}>
+          <div style={{ background: "var(--pk-pink-dark)", borderRadius: "12px 12px 0 0", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", color: "#fff" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <h2 style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "1.8rem", margin: 0, fontWeight: 800, fontStyle: "italic" }}>
+                Flash <Zap fill="#fff" size={24} /> Sale
+              </h2>
+              <span style={{ fontSize: "0.9rem", fontWeight: 600, letterSpacing: "0.05em", background: "rgba(255,255,255,0.2)", padding: "3px 10px", borderRadius: 99 }}>
+                🔥 ĐANG DIỄN RA
+              </span>
+            </div>
+            <Link to="/products" style={{ background: "#ffe4e8", color: "var(--pk-pink-dark)", padding: "6px 16px", borderRadius: 99, fontSize: "0.85rem", fontWeight: 700, textDecoration: "none" }}>Xem tất cả &raquo;</Link>
           </div>
-          <Link to="/products" style={{ background: "#ffe4e8", color: "var(--pk-pink-dark)", padding: "6px 16px", borderRadius: 99, fontSize: "0.85rem", fontWeight: 700, textDecoration: "none" }}>Xem tất cả &raquo;</Link>
-        </div>
-        <div style={{ border: "1px solid var(--pk-pink-light)", borderTop: "none", padding: 20, borderRadius: "0 0 12px 12px", background: "#fff" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
-            {flashSaleProducts.map(p => <ProductCard key={p.id} product={p} />)}
+          <div style={{ border: "1px solid var(--pk-pink-light)", borderTop: "none", padding: 20, borderRadius: "0 0 12px 12px", background: "#fff" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
+              {flashSaleProducts.map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <AiRecommendations title="Dành riêng cho bạn" limit={5} context="home" />
 
-      {/* ── LAM THẢO CÓ GÌ HOT (PinkyLab có gì hot) ── */}
-      <section className="container" style={{ marginBottom: 60, padding: "0 20px" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 20 }}>
-          <h2 style={{ color: "#1a1a1a", fontSize: "1.6rem", fontWeight: 800, textTransform: "uppercase" }}>PINKYLAB CÓ GÌ HOT ?</h2>
-          <div style={{ display: "flex", gap: 8 }}>
-            {[1,2,3,4,5,6].map((n, i) => (
-              <span key={n} onClick={() => setHotPage(i)} style={{ width: 24, height: 24, borderRadius: "50%", background: hotPage === i ? "var(--pk-pink)" : "#eee", color: hotPage === i ? "#fff" : "#666", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }}>{n}</span>
-            ))}
-          </div>
-        </div>
+      {/* ── PINKYLAB CÓ GÌ HOT ── */}
+      {brands.length >= 2 && (() => {
+        const hotBrands = brands.slice(0, 2);
+        return (
+          <section className="container" style={{ marginBottom: 60, padding: "0 20px" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 20 }}>
+              <h2 style={{ color: "#1a1a1a", fontSize: "1.6rem", fontWeight: 800, textTransform: "uppercase" }}>PINKYLAB CÓ GÌ HOT ?</h2>
+              <Link to="/products" style={{ fontSize: "0.85rem", color: "var(--pk-pink-dark)", fontWeight: 700, textDecoration: "none" }}>Xem tất cả &raquo;</Link>
+            </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-          {/* Brand 1 */}
-          <div>
-            <img src="https://plus.unsplash.com/premium_photo-1661769021743-7139c6fc4ab9?q=80&w=600&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Colorkey" style={{ width: "100%", height: 200, borderRadius: 8, marginBottom: 12, display: "block", objectFit: "cover", cursor: "pointer" }} onClick={() => navigate("/products?q=Colorkey")} />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Mở Khoá Chất Riêng Cùng Colorkey</h3>
-              <Link to="/products?q=Colorkey" style={{ fontSize: "0.8rem", color: "#666", textDecoration: "none" }}>Xem thêm &raquo;</Link>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+              {hotBrands.map((brand, bi) => {
+                const brandProducts = [...products]
+                  .filter(p => {
+                    const bName = (p.brand?.name || p.brandName || p.brand || "").toLowerCase();
+                    return bName === brand.name.toLowerCase();
+                  })
+                  .sort((a, b) => {
+                    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    return tb - ta;
+                  })
+                  .slice(0, 2);
+
+                const FALLBACK_BANNERS = [
+                  "https://plus.unsplash.com/premium_photo-1661769021743-7139c6fc4ab9?q=80&w=600&auto=format&fit=crop",
+                  "https://images.unsplash.com/photo-1627384113944-4822313913c6?q=80&w=600&auto=format&fit=crop",
+                ];
+                // Luôn dùng cover — nếu có logo thì dùng ảnh cosmetics fallback thay vì logo (logo thường có nền trắng)
+                const bannerImg = FALLBACK_BANNERS[bi % FALLBACK_BANNERS.length];
+
+                return (
+                  <div key={brand.id || bi}>
+                    {/* Ảnh banner — aspect ratio 16:9, objectFit cover, không vùng trắng */}
+                    <div
+                      onClick={() => navigate(`/products?q=${encodeURIComponent(brand.name)}`)}
+                      style={{ position: "relative", width: "100%", paddingTop: "56.25%", borderRadius: 10, overflow: "hidden", cursor: "pointer", marginBottom: 14 }}
+                    >
+                      <img
+                        src={bannerImg}
+                        alt={brand.name}
+                        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                        onError={(e) => { e.target.onerror = null; e.target.src = "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600&q=80"; }}
+                      />
+                      {/* Overlay tên brand */}
+                      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(transparent, rgba(0,0,0,0.55))", padding: "24px 16px 14px", color: "#fff" }}>
+                        {brand.logoUrl && (
+                          <img src={brand.logoUrl} alt={brand.name} style={{ height: 32, objectFit: "contain", marginBottom: 6, borderRadius: 4, background: "rgba(255,255,255,0.15)", padding: "2px 6px" }}
+                            onError={(e) => { e.target.style.display = "none"; }} />
+                        )}
+                        <div style={{ fontWeight: 800, fontSize: "1.1rem", textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>{brand.name}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                      <span style={{ fontSize: "0.88rem", color: "#666" }}>{brand.description ? brand.description.slice(0, 60) + (brand.description.length > 60 ? "…" : "") : "Khám phá sản phẩm mới nhất"}</span>
+                      <Link to={`/products?q=${encodeURIComponent(brand.name)}`} style={{ fontSize: "0.8rem", color: "var(--pk-pink-dark)", fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap", marginLeft: 8 }}>Xem thêm &raquo;</Link>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                      {brandProducts.length > 0
+                        ? brandProducts.map((p, i) => <ProductCard key={`hot-${bi}-${p.id || i}`} product={p} />)
+                        : products.slice(bi * 2, bi * 2 + 2).map((p, i) => <ProductCard key={`hot-fb-${bi}-${p.id || i}`} product={p} />)
+                      }
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              {products.slice((10 + hotPage * 2) % Math.max(products.length, 1), (10 + hotPage * 2) % Math.max(products.length, 1) + 2).map((p, i) => <ProductCard key={`hot-1-${hotPage}-${p.id || i}`} product={p} />)}
-            </div>
-          </div>
-          {/* Brand 2 */}
-          <div>
-            <img src="https://images.unsplash.com/photo-1627384113944-4822313913c6?q=80&w=600&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="Amortals" style={{ width: "100%", height: 200, borderRadius: 8, marginBottom: 12, display: "block", objectFit: "cover", cursor: "pointer" }} onClick={() => navigate("/products?q=Amortals")} />
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Tán nền mịn như mơ cùng Amortals!</h3>
-              <Link to="/products?q=Amortals" style={{ fontSize: "0.8rem", color: "#666", textDecoration: "none" }}>Xem thêm &raquo;</Link>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              {products.slice((12 + hotPage * 2) % Math.max(products.length, 1), (12 + hotPage * 2) % Math.max(products.length, 1) + 2).map((p, i) => <ProductCard key={`hot-2-${hotPage}-${p.id || i}`} product={p} />)}
-            </div>
-          </div>
-        </div>
-      </section>
+          </section>
+        );
+      })()}
+
 
       {/* ── SẢN PHẨM MỚI ── */}
       <section className="container" style={{ marginBottom: 60, padding: "0 20px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, borderBottom: "2px solid #eee", paddingBottom: 10 }}>
           <h2 style={{ color: "#1a1a1a", fontSize: "1.6rem", fontWeight: 800, textTransform: "uppercase", margin: 0 }}>SẢN PHẨM MỚI</h2>
-          <Link to="/products" style={{ background: "#ffe4e8", color: "var(--pk-pink-dark)", padding: "6px 16px", borderRadius: 99, fontSize: "0.85rem", fontWeight: 700, textDecoration: "none" }}>Xem tất cả &raquo;</Link>
+          <Link to="/products?cat=S%E1%BA%A2N%20PH%E1%BA%A8M%20M%E1%BB%9AI" style={{ background: "#ffe4e8", color: "var(--pk-pink-dark)", padding: "6px 16px", borderRadius: 99, fontSize: "0.85rem", fontWeight: 700, textDecoration: "none" }}>Xem tất cả &raquo;</Link>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
           {newProducts.map(p => <ProductCard key={p.id} product={p} />)}
@@ -213,7 +319,7 @@ export default function HomePage() {
           </div>
           {/* Products Grid */}
           <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16 }}>
-            {getBestSellerProducts().map(p => <ProductCard key={p.id} product={{ ...p, badge: "sale", originalPrice: p.price * 1.3 }} />)}
+            {getBestSellerProducts().map(p => <ProductCard key={p.id} product={p} />)}
           </div>
         </div>
       </section>
@@ -289,6 +395,22 @@ export default function HomePage() {
            <img src="https://images.unsplash.com/photo-1629198688000-71f23e745b6e?w=400&q=80" alt="Banner 1" onClick={() => navigate("/products?cat=Ch%C4%83m%20s%C3%B3c%20da%20m%E1%BA%B7t")} style={{ width: "100%", aspectRatio: "8/3", borderRadius: 12, objectFit: "cover", display: "block", cursor: "pointer", transition: "opacity 0.2s" }} onMouseEnter={e => e.target.style.opacity="0.85"} onMouseLeave={e => e.target.style.opacity="1"} />
            <img src="https://images.unsplash.com/photo-1617897903246-719242758050?w=400&q=80" alt="Banner 2" onClick={() => navigate("/products?cat=Trang%20%C4%91i%E1%BB%83m")} style={{ width: "100%", aspectRatio: "8/3", borderRadius: 12, objectFit: "cover", display: "block", cursor: "pointer", transition: "opacity 0.2s" }} onMouseEnter={e => e.target.style.opacity="0.85"} onMouseLeave={e => e.target.style.opacity="1"} />
            <img src="https://images.unsplash.com/photo-1516975080664-ed2fc6a32937?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D?w=400&q=80" alt="Banner 3" onClick={() => navigate("/products?maxPrice=100000")} style={{ width: "100%", aspectRatio: "8/3", borderRadius: 12, objectFit: "cover", display: "block", cursor: "pointer", transition: "opacity 0.2s" }} onMouseEnter={e => e.target.style.opacity="0.85"} onMouseLeave={e => e.target.style.opacity="1"} />
+        </div>
+      </section>
+
+      {/* ── BEAUTY QUOTES ── */}
+      <section style={{ background: "linear-gradient(135deg, #fff0f5 0%, #fce4ec 100%)", padding: "40px 20px", marginTop: 24 }}>
+        <div className="container" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
+          {[
+            { quote: "Beauty begins the moment you decide to be yourself.", author: "Coco Chanel" },
+            { quote: "Invest in your skin. It's going to represent you for a very long time.", author: "Linden Tyler" },
+            { quote: "Taking care of yourself is productive.", author: "PinkyLab" },
+          ].map((q, i) => (
+            <div key={i} style={{ background: "rgba(255,255,255,0.7)", backdropFilter: "blur(8px)", borderRadius: 12, padding: "20px 24px", borderLeft: "4px solid var(--pk-pink)", boxShadow: "0 2px 12px rgba(236,72,153,0.08)" }}>
+              <p style={{ fontSize: "0.95rem", fontStyle: "italic", color: "#444", lineHeight: 1.7, margin: "0 0 10px" }}>&#8220;{q.quote}&#8221;</p>
+              <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--pk-pink-dark)", letterSpacing: "0.05em" }}>— {q.author}</span>
+            </div>
+          ))}
         </div>
       </section>
 

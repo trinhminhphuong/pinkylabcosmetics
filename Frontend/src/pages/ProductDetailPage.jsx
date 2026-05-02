@@ -5,8 +5,26 @@ import { formatPrice } from "../data/products";
 import { useCart, useWishlist, useToast } from "../context/store";
 import ProductCard from "../components/ProductCard";
 import AiRecommendations from "../components/AiRecommendations";
-import { ProductService } from "../services";
+import { ProductService, PromotionService } from "../services";
 import { trackEvent } from "../services/aiClient";
+
+/** Tính giá giảm từ danh sách promotions, trả về { price, originalPrice } */
+function applyActivePromotion(basePrice, promotions) {
+  const now = new Date();
+  const active = (promotions || []).find(p => {
+    const isActive = p.active ?? p.isActive ?? false;
+    if (!isActive) return false;
+    try {
+      return new Date(p.startDate) <= now && new Date(p.endDate) >= now;
+    } catch { return false; }
+  });
+  if (!active) return { price: basePrice, originalPrice: null };
+  const val = Number(active.discountValue) || 0;
+  const discounted = (active.discountType === "PERCENTAGE" || active.discountType === "percent")
+    ? Math.round(basePrice * (1 - val / 100))
+    : Math.max(0, basePrice - val);
+  return { price: discounted, originalPrice: basePrice };
+}
 
 export default function ProductDetailPage() {
   const { id } = useParams();
@@ -22,22 +40,31 @@ export default function ProductDetailPage() {
   const [qty, setQty] = useState(1);
   const [activeImg, setActiveImg] = useState(0);
   const [added, setAdded] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState(null);
 
   useEffect(() => {
     setLoading(true);
     ProductService.getProductById(id)
-      .then(res => {
+      .then(async res => {
          let raw = res?.data || res || null;
          if (raw && (raw.id || raw.name)) {
+           const basePrice = raw.price || raw.oldPrice || 0;
+           
+           // Fetch promotions và tính giá giảm thực
+           let priceInfo = { price: basePrice, originalPrice: null };
+           try {
+             const promoRes = await PromotionService.getPromotionsByProduct(raw.id);
+             const promos = promoRes?.data || promoRes || [];
+             priceInfo = applyActivePromotion(basePrice, Array.isArray(promos) ? promos : []);
+           } catch { /* không có promotion, giữ giá gốc */ }
+
            const prod = {
              ...raw,
-             price: raw.price || raw.oldPrice || 0,
-             originalPrice: raw.oldPrice ? Math.round(raw.oldPrice * 1.2) : null,
+             price: priceInfo.price,
+             originalPrice: priceInfo.originalPrice,
              inStock: (raw.stock ?? 1) > 0,
-             // Normalize images: backend returns imageUrl array
              images: raw.imageUrl || raw.images || (raw.image ? [raw.image] : []),
              image: (raw.imageUrl && raw.imageUrl[0]) || raw.image || null,
-             // Normalize category to string
              category: raw.category?.name || raw.category || "",
            };
            setProduct(prod);
@@ -58,7 +85,7 @@ export default function ProductDetailPage() {
                arr = arr.map(p => ({
                  ...p,
                  price: p.price || p.oldPrice || 0,
-                 originalPrice: p.oldPrice ? Math.round(p.oldPrice * 1.2) : null,
+                 originalPrice: (p.price && p.oldPrice && p.price < p.oldPrice) ? p.oldPrice : null,
                  inStock: (p.stock ?? 1) > 0,
                  images: p.imageUrl || p.images || (p.image ? [p.image] : []),
                  image: (p.imageUrl && p.imageUrl[0]) || p.image || null,
@@ -214,6 +241,55 @@ export default function ProductDetailPage() {
                 ? "Sản phẩm mỹ phẩm cao cấp với công thức độc quyền từ thiên nhiên. Giúp dưỡng ẩm, làm sáng da, mang lại làn da tươi trẻ rạng ngời và bảo vệ toàn diện suốt 24h. Phù hợp với mọi loại da, kể cả da nhạy cảm."
                 : product.description}
             </p>
+
+            {/* Variant Selector */}
+            {(() => {
+              const variants = product.variants || product.options || [];
+              // Build variant groups: if backend provides variant objects, group by type
+              // If no variants from backend, hide this section
+              if (!variants.length) return null;
+              // Group by variantType or just show as flat list
+              const grouped = variants.reduce((acc, v) => {
+                const type = v.type || v.variantType || "Biến thể";
+                if (!acc[type]) acc[type] = [];
+                acc[type].push(v.value || v.name || v);
+                return acc;
+              }, {});
+              return (
+                <div style={{ marginBottom: 24 }}>
+                  {Object.entries(grouped).map(([type, values]) => (
+                    <div key={type} style={{ marginBottom: 14 }}>
+                      <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--text)", display: "block", marginBottom: 8 }}>
+                        {type}:
+                        {selectedVariant?.[type] && (
+                          <span style={{ fontWeight: 400, color: "var(--pk-pink)", marginLeft: 6 }}>{selectedVariant[type]}</span>
+                        )}
+                      </span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {values.map(val => {
+                          const active = selectedVariant?.[type] === val;
+                          return (
+                            <button
+                              key={val}
+                              onClick={() => setSelectedVariant(prev => ({ ...prev, [type]: active ? null : val }))}
+                              style={{
+                                padding: "6px 16px", borderRadius: 999, fontSize: "0.82rem", fontWeight: 600,
+                                border: `2px solid ${active ? "var(--pk-pink)" : "var(--border)"}`,
+                                background: active ? "var(--pk-pink-light)" : "var(--surface)",
+                                color: active ? "var(--pk-pink)" : "var(--text)",
+                                cursor: "pointer", transition: "all 0.2s"
+                              }}
+                            >
+                              {val}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* Stock status */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, fontSize: "0.875rem" }}>

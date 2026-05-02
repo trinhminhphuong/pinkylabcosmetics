@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Edit, Trash2, Filter, Loader, Image as ImageIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Loader, Image as ImageIcon, ChevronLeft, ChevronRight, Tag, X } from "lucide-react";
 import Modal from "../../components/admin/Modal";
-import { ProductService, CategoryService, BrandService } from "../../services/apiServices";
+import { ProductService, CategoryService, BrandService, PromotionService } from "../../services/apiServices";
 import { useToast } from "../../context/store";
 
 const BACKEND_ORIGIN = import.meta.env.VITE_BACKEND_ORIGIN || "http://localhost:8080";
+
+// Ảnh fallback dạng data URI — không bao giờ fail, tránh onError loop
+const FALLBACK_IMG = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' fill='%23d1d5db'%3E🖼%3C/text%3E%3C/svg%3E";
 
 export default function AdminProducts() {
   const [products, setProducts] = useState([]);
@@ -20,10 +23,21 @@ export default function AdminProducts() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Promotion states
+  const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
+  const [promoTargetProduct, setPromoTargetProduct] = useState(null);
+  const [promotions, setPromotions] = useState([]);
+  const [promoForm, setPromoForm] = useState({
+    name: "", discountValue: "", discountType: "PERCENTAGE",
+    startDate: "", endDate: ""
+  });
+  const [isPromoSubmitting, setIsPromoSubmitting] = useState(false);
+
   // Pagination states
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [pageSize] = useState(10);
+  const [allProducts, setAllProducts] = useState([]); // toàn bộ để filter client-side
 
   // Form states
   const [formData, setFormData] = useState({
@@ -37,11 +51,15 @@ export default function AdminProducts() {
   const fetchProducts = useCallback(async (page) => {
     setIsLoading(true);
     try {
-      // Backend pageNum is 1-based (it subtracts 1 internally)
       const res = await ProductService.getAllProducts({ pageNum: page + 1, pageSize });
       const data = res?.data;
-      setProducts(data?.items || data?.content || []);
-      // totalPages is nested inside meta
+      const items = data?.items || data?.content || [];
+      // Sắp xếp mới nhất lên đầu
+      const sorted = [...items].sort((a, b) => {
+        if (a.createdAt && b.createdAt) return new Date(b.createdAt) - new Date(a.createdAt);
+        return (b.id || "").localeCompare(a.id || "");
+      });
+      setProducts(sorted);
       setTotalPages(data?.meta?.totalPages || data?.totalPages || 1);
     } catch (error) {
       console.error("Lỗi khi tải sản phẩm:", error);
@@ -50,6 +68,22 @@ export default function AdminProducts() {
       setIsLoading(false);
     }
   }, [pageSize, show]);
+
+  // Fetch toàn bộ sản phẩm cho client-side filter
+  const fetchAllProducts = useCallback(async () => {
+    try {
+      const res = await ProductService.getAllProducts({ pageNum: 1, pageSize: 9999 });
+      const data = res?.data;
+      const items = data?.items || data?.content || [];
+      const sorted = [...items].sort((a, b) => {
+        if (a.createdAt && b.createdAt) return new Date(b.createdAt) - new Date(a.createdAt);
+        return (b.id || "").localeCompare(a.id || "");
+      });
+      setAllProducts(sorted);
+    } catch (e) {
+      console.error("Lỗi fetch all:", e);
+    }
+  }, []);
 
   const fetchInitialData = useCallback(async () => {
     try {
@@ -68,11 +102,17 @@ export default function AdminProducts() {
 
   useEffect(() => {
     fetchInitialData();
-  }, [fetchInitialData]);
+    fetchAllProducts();
+  }, [fetchInitialData, fetchAllProducts]);
 
   useEffect(() => {
-    fetchProducts(currentPage);
-  }, [currentPage, fetchProducts]);
+    // Không còn dùng server pagination — luôn dùng allProducts
+  }, [currentPage, fetchProducts, filterCategory, searchTerm]);
+
+  // Reset về trang 0 khi thay đổi filter
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [filterCategory, searchTerm]);
 
   const openModal = (type, product = null) => {
     setModalType(type);
@@ -102,12 +142,76 @@ export default function AdminProducts() {
     setSelectedProduct(null);
   };
 
+  const openPromoModal = async (product) => {
+    setPromoTargetProduct(product);
+    setPromoForm({ name: "", discountValue: "", discountType: "PERCENTAGE", startDate: "", endDate: "" });
+    try {
+      const res = await PromotionService.getPromotionsByProduct(product.id);
+      setPromotions(res?.data || []);
+    } catch { setPromotions([]); }
+    setIsPromoModalOpen(true);
+  };
+
+  const closePromoModal = () => {
+    setIsPromoModalOpen(false);
+    setPromoTargetProduct(null);
+    setPromotions([]);
+  };
+
+  const handleCreatePromotion = async (e) => {
+    e.preventDefault();
+    setIsPromoSubmitting(true);
+    try {
+      const payload = {
+        name: promoForm.name,
+        discountValue: Number(promoForm.discountValue),
+        discountType: promoForm.discountType,
+        startDate: new Date(promoForm.startDate).toISOString().slice(0, 19),
+        endDate: new Date(promoForm.endDate).toISOString().slice(0, 19),
+      };
+      await PromotionService.createPromotion(promoTargetProduct.id, payload);
+      show("Tạo khuyến mãi thành công!");
+      const res = await PromotionService.getPromotionsByProduct(promoTargetProduct.id);
+      setPromotions(res?.data || []);
+      setPromoForm({ name: "", discountValue: "", discountType: "PERCENTAGE", startDate: "", endDate: "" });
+      fetchAllProducts();
+    } catch (err) {
+      show(err?.response?.data?.message || "Lỗi khi tạo khuyến mãi");
+    } finally {
+      setIsPromoSubmitting(false);
+    }
+  };
+
+  const handleDeletePromotion = async (promoId) => {
+    try {
+      await PromotionService.deletePromotion(promoId);
+      show("Đã xóa khuyến mãi!");
+      setPromotions(prev => prev.filter(p => p.id !== promoId));
+      fetchAllProducts();
+    } catch {
+      show("Lỗi khi xóa khuyến mãi");
+    }
+  };
+
+  const handleTogglePromotion = async (promo) => {
+    const currentActive = promo.active ?? promo.isActive ?? false;
+    try {
+      await PromotionService.updatePromotion(promo.id, { isActive: !currentActive });
+      show(currentActive ? "Đã tắt khuyến mãi!" : "Đã bật khuyến mãi!");
+      const res = await PromotionService.getPromotionsByProduct(promoTargetProduct.id);
+      setPromotions(res?.data || []);
+      fetchAllProducts();
+    } catch {
+      show("Lỗi khi cập nhật khuyến mãi");
+    }
+  };
+
   const handleDelete = async () => {
     setIsSubmitting(true);
     try {
       await ProductService.deleteProduct(selectedProduct.id);
       show("Xóa sản phẩm thành công!");
-      fetchProducts(currentPage);
+      fetchAllProducts();
       closeModal();
     } catch (err) {
       show("Lỗi khi xóa sản phẩm");
@@ -173,11 +277,15 @@ export default function AdminProducts() {
     }
   };
 
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = filterCategory === "" || (p.category?.id === filterCategory || p.categoryId === filterCategory);
+  // Luôn dùng allProducts (sort mới nhất, fetch toàn bộ) — client-side filter + paginate
+  const filteredProducts = allProducts.filter(p => {
+    const matchesSearch = !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = !filterCategory || (p.category?.id === filterCategory || p.categoryId === filterCategory || p.category?.name === filterCategory);
     return matchesSearch && matchesCategory;
   });
+
+  const effectiveTotalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
+  const displayedProducts = filteredProducts.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
 
   const getStatus = (stock) => {
     if (stock > 10) return { label: "Còn hàng", bg: "#e0f7f4", color: "#12c2b0" };
@@ -236,7 +344,7 @@ export default function AdminProducts() {
             <tbody>
               {isLoading ? (
                 <tr><td colSpan="7" style={{ textAlign: "center", padding: "40px" }}><Loader size={30} className="spin" color="var(--pk-pink)" /></td></tr>
-              ) : filteredProducts.map((prod) => {
+              ) : displayedProducts.map((prod) => {
                 const status = getStatus(prod.stock);
                 // Use the last image in the array so newly uploaded ones appear first
                 const lastImgUrl = prod.imageUrl && prod.imageUrl.length > 0 
@@ -251,7 +359,7 @@ export default function AdminProducts() {
                         src={displayImg} 
                         alt={prod.name} 
                         style={{ width: 40, height: 40, borderRadius: "4px", objectFit: "cover" }} 
-                        onError={(e) => { e.target.onerror = null; e.target.src = "https://via.placeholder.com/40?text=No+Image"; }}
+                        onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK_IMG; }}
                       />
                     </td>
                     <td style={{ padding: "16px", fontSize: "0.9rem", fontWeight: 600 }}>{prod.name}</td>
@@ -267,6 +375,9 @@ export default function AdminProducts() {
                     </td>
                     <td style={{ padding: "16px", textAlign: "center" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+                        <button onClick={() => openPromoModal(prod)} style={{ color: "var(--pk-pink)", background: "none", border: "none", cursor: "pointer", padding: "6px", borderRadius: "4px", transition: "all 0.2s" }} title="Khuyến mãi">
+                          <Tag size={18} />
+                        </button>
                         <button onClick={() => openModal('edit', prod)} style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: "6px", borderRadius: "4px", transition: "all 0.2s" }} title="Sửa">
                           <Edit size={18} />
                         </button>
@@ -278,7 +389,7 @@ export default function AdminProducts() {
                   </tr>
                 );
               })}
-              {!isLoading && filteredProducts.length === 0 && (
+              {!isLoading && displayedProducts.length === 0 && (
                 <tr><td colSpan="7" style={{ textAlign: "center", padding: "24px", color: "var(--text-muted)" }}>Không có sản phẩm nào</td></tr>
               )}
             </tbody>
@@ -286,10 +397,11 @@ export default function AdminProducts() {
         </div>
 
         {/* Pagination Controls */}
-        {!isLoading && totalPages >= 1 && (
+        {!isLoading && effectiveTotalPages >= 1 && (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "24px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
             <div style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>
-              Trang {currentPage + 1} / {totalPages}
+              Trang {currentPage + 1} / {effectiveTotalPages}
+              {(filterCategory || searchTerm) && <span style={{ marginLeft: 8, color: "var(--pk-pink)", fontSize: "0.82rem" }}>({filteredProducts.length} sản phẩm)</span>}
             </div>
             <div style={{ display: "flex", gap: "8px" }}>
               <button 
@@ -300,9 +412,9 @@ export default function AdminProducts() {
                 <ChevronLeft size={16} /> Trước
               </button>
               <button 
-                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-                disabled={currentPage >= totalPages - 1}
-                style={{ display: "flex", alignItems: "center", gap: "4px", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: currentPage >= totalPages - 1 ? "var(--surface-2)" : "#fff", color: currentPage >= totalPages - 1 ? "var(--text-muted)" : "var(--text-main)", cursor: currentPage >= totalPages - 1 ? "not-allowed" : "pointer" }}
+                onClick={() => setCurrentPage(p => Math.min(effectiveTotalPages - 1, p + 1))}
+                disabled={currentPage >= effectiveTotalPages - 1}
+                style={{ display: "flex", alignItems: "center", gap: "4px", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: currentPage >= effectiveTotalPages - 1 ? "var(--surface-2)" : "#fff", color: currentPage >= effectiveTotalPages - 1 ? "var(--text-muted)" : "var(--text-main)", cursor: currentPage >= effectiveTotalPages - 1 ? "not-allowed" : "pointer" }}
               >
                 Sau <ChevronRight size={16} />
               </button>
@@ -426,6 +538,102 @@ export default function AdminProducts() {
             {isSubmitting ? <Loader className="spin" size={18} /> : "Xóa sản phẩm"}
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={isPromoModalOpen}
+        onClose={closePromoModal}
+        title={`Khuyến mãi — ${promoTargetProduct?.name || ""}`}
+        maxWidth="620px"
+      >
+        {/* Danh sách khuyến mãi hiện tại */}
+        <div style={{ marginBottom: "20px" }}>
+          <p style={{ fontWeight: 600, marginBottom: "10px", fontSize: "0.9rem" }}>Khuyến mãi hiện tại:</p>
+          {promotions.length === 0 ? (
+            <p style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>Chưa có khuyến mãi nào.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {promotions.map(p => {
+                const isActive = p.active ?? p.isActive ?? false;
+                const discVal = p.discountValue != null ? Number(p.discountValue) : 0;
+                const unit = (p.discountType === "PERCENTAGE" || p.discountType === "percent") ? "%" : "đ";
+                return (
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderRadius: "8px", border: "1px solid var(--border)", background: isActive ? "#fff0f6" : "var(--surface-2)" }}>
+                    <div style={{ flex: 1, flexWrap: "wrap", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{p.name}</span>
+                      <span style={{ color: "var(--pk-pink)", fontWeight: 700, background: "#ffe4f0", padding: "2px 8px", borderRadius: 99, fontSize: "0.8rem" }}>
+                        -{discVal}{unit}
+                      </span>
+                      <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                        {new Date(p.startDate).toLocaleDateString("vi-VN")} → {new Date(p.endDate).toLocaleDateString("vi-VN")}
+                      </span>
+                      <span style={{ padding: "2px 8px", borderRadius: "999px", fontSize: "0.75rem", fontWeight: 600, background: isActive ? "#dcfce7" : "#fee2e2", color: isActive ? "#16a34a" : "#dc2626" }}>
+                        {isActive ? "Đang bật" : "Đã tắt"}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                      <button type="button" onClick={() => handleTogglePromotion(p)} style={{ fontSize: "0.78rem", padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--border)", cursor: "pointer", background: "white" }}>
+                        {isActive ? "Tắt" : "Bật"}
+                      </button>
+                      <button type="button" onClick={() => handleDeletePromotion(p.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--pk-red)" }}>
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Form tạo khuyến mãi mới */}
+        <p style={{ fontWeight: 600, marginBottom: "12px", fontSize: "0.9rem", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>Tạo khuyến mãi mới:</p>
+        <form onSubmit={handleCreatePromotion} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {/* Row 1: Tên | Loại giảm | Giá trị giảm */}
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "12px" }}>
+            <div>
+              <label style={{ display: "block", marginBottom: "6px", fontSize: "0.85rem", fontWeight: 500 }}>Tên khuyến mãi *</label>
+              <input required className="input-pk" placeholder="VD: Flash Sale tháng 5" value={promoForm.name} onChange={e => setPromoForm({ ...promoForm, name: e.target.value })} />
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: "6px", fontSize: "0.85rem", fontWeight: 500 }}>Loại giảm *</label>
+              <select required className="input-pk" value={promoForm.discountType} onChange={e => setPromoForm({ ...promoForm, discountType: e.target.value })}>
+                <option value="PERCENTAGE">% Phần trăm</option>
+                <option value="FIXED">Cố định (đ)</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: "6px", fontSize: "0.85rem", fontWeight: 500 }}>
+                Giá trị giảm * {promoForm.discountType === "PERCENTAGE" ? "(%)" : "(đ)"}
+              </label>
+              <input
+                required type="number" min="0"
+                max={promoForm.discountType === "PERCENTAGE" ? 100 : undefined}
+                className="input-pk"
+                placeholder={promoForm.discountType === "PERCENTAGE" ? "0-100" : "50000"}
+                value={promoForm.discountValue}
+                onChange={e => setPromoForm({ ...promoForm, discountValue: e.target.value })}
+              />
+            </div>
+          </div>
+          {/* Row 2: Ngày bắt đầu | Ngày kết thúc */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div>
+              <label style={{ display: "block", marginBottom: "6px", fontSize: "0.85rem", fontWeight: 500 }}>Ngày bắt đầu *</label>
+              <input required type="datetime-local" className="input-pk" value={promoForm.startDate} onChange={e => setPromoForm({ ...promoForm, startDate: e.target.value })} />
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: "6px", fontSize: "0.85rem", fontWeight: 500 }}>Ngày kết thúc *</label>
+              <input required type="datetime-local" className="input-pk" value={promoForm.endDate} onChange={e => setPromoForm({ ...promoForm, endDate: e.target.value })} />
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "8px" }}>
+            <button type="button" className="btn-ghost" onClick={closePromoModal}>Đóng</button>
+            <button type="submit" className="btn-primary" disabled={isPromoSubmitting}>
+              {isPromoSubmitting ? <Loader className="spin" size={18} /> : "Tạo khuyến mãi"}
+            </button>
+          </div>
+        </form>
       </Modal>
 
       <style>{`

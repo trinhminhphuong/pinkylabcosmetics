@@ -16,22 +16,32 @@ export default function AdminDashboard() {
     const fetchDashboardData = async () => {
       setIsLoading(true);
       try {
-        // Fetch orders, products, categories in parallel
         const [ordRes, prodRes, catRes] = await Promise.all([
-          OrderService.getAllOrders({ pageNum: 1, pageSize: 5 }),
+          OrderService.getAllOrders({ pageNum: 1, pageSize: 9999 }), // fetch all để tính doanh thu thật
           ProductService.getAllProducts({ pageNum: 1, pageSize: 1 }),
           CategoryService.getAllCategories({ pageNum: 1, pageSize: 1 }),
         ]);
 
-        const ordersData = ordRes?.data?.items || [];
-        const totalOrders = ordRes?.data?.meta?.totalElement || 0;
-        const totalProducts = prodRes?.data?.meta?.totalElement || 0;
-        const totalCategories = catRes?.data?.meta?.totalElement || 0;
+        const allOrders = ordRes?.data?.items || ordRes?.data?.content || [];
+        const totalOrders = ordRes?.data?.meta?.totalElement || ordRes?.data?.meta?.totalElements || allOrders.length;
+        const totalProducts = prodRes?.data?.meta?.totalElement || prodRes?.data?.meta?.totalElements || 0;
+        const totalCategories = catRes?.data?.meta?.totalElement || catRes?.data?.meta?.totalElements || 0;
 
-        // Calculate total revenue from recent orders (sum of totalAmount)
-        const totalRevenue = ordersData.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+        // Doanh thu thật = tổng tất cả đơn hàng
+        const totalRevenue = allOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
-        setRecentOrders(ordersData);
+        // 5 đơn mới nhất: sort theo createdAt/orderDate desc
+        const sorted = [...allOrders].sort((a, b) => {
+          const ta = new Date(a.createdAt || a.orderDate || 0).getTime();
+          const tb = new Date(b.createdAt || b.orderDate || 0).getTime();
+          if (tb !== ta) return tb - ta;
+          // Fallback: so sánh orderNumber số
+          const na = parseInt((a.orderNumber || "").replace(/\D/g, "")) || 0;
+          const nb = parseInt((b.orderNumber || "").replace(/\D/g, "")) || 0;
+          return nb - na;
+        });
+
+        setRecentOrders(sorted.slice(0, 5));
         setStats({ totalRevenue, totalOrders, totalProducts, totalCategories });
       } catch (err) {
         console.error("Failed to fetch dashboard data:", err);

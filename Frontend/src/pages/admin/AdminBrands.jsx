@@ -20,6 +20,8 @@ export default function AdminBrands() {
   
   const fileInputRef = useRef(null);
   const { show } = useToast();
+  const [currentPage, setCurrentPage] = useState(0);
+  const PAGE_SIZE = 10;
 
   const fetchBrands = async () => {
     setIsLoading(true);
@@ -136,6 +138,11 @@ export default function AdminBrands() {
     b.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+
+  const handleSearch = (val) => { setSearchTerm(val); setCurrentPage(0); };
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
@@ -153,7 +160,7 @@ export default function AdminBrands() {
               type="text"
               placeholder="Tìm kiếm thương hiệu..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => handleSearch(e.target.value)}
               style={{ border: "none", background: "transparent", outline: "none", width: "100%", fontSize: "0.9rem" }}
             />
           </div>
@@ -173,7 +180,7 @@ export default function AdminBrands() {
             <tbody>
               {isLoading ? (
                 <tr><td colSpan="5" style={{ textAlign: "center", padding: "40px" }}><Loader size={30} className="spin" color="var(--pk-pink)" /></td></tr>
-              ) : filtered.map((brand) => (
+              ) : paginated.map((brand) => (
                 <tr key={brand.id} style={{ borderBottom: "1px solid var(--border)", transition: "background 0.2s" }}
                   onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface-2)"}
                   onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
@@ -205,12 +212,32 @@ export default function AdminBrands() {
                   </td>
                 </tr>
               ))}
-              {!isLoading && filtered.length === 0 && (
+              {!isLoading && paginated.length === 0 && (
                 <tr><td colSpan="5" style={{ textAlign: "center", padding: "32px", color: "var(--text-muted)" }}>Không tìm thấy thương hiệu nào</td></tr>
               )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {!isLoading && totalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "20px", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
+            <div style={{ fontSize: "0.9rem", color: "var(--text-muted)" }}>
+              Trang {currentPage + 1} / {totalPages}
+              <span style={{ marginLeft: 8, color: "var(--pk-pink)", fontSize: "0.82rem" }}>({filtered.length} thương hiệu)</span>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button onClick={() => setCurrentPage(p => Math.max(0, p - 1))} disabled={currentPage === 0}
+                style={{ display: "flex", alignItems: "center", gap: "4px", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: currentPage === 0 ? "var(--surface-2)" : "#fff", color: currentPage === 0 ? "var(--text-muted)" : "var(--text-main)", cursor: currentPage === 0 ? "not-allowed" : "pointer", fontSize: "0.9rem" }}>
+                ‹ Trước
+              </button>
+              <button onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} disabled={currentPage >= totalPages - 1}
+                style={{ display: "flex", alignItems: "center", gap: "4px", padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)", background: currentPage >= totalPages - 1 ? "var(--surface-2)" : "#fff", color: currentPage >= totalPages - 1 ? "var(--text-muted)" : "var(--text-main)", cursor: currentPage >= totalPages - 1 ? "not-allowed" : "pointer", fontSize: "0.9rem" }}>
+                Sau ›
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Add/Edit Modal */}

@@ -27,7 +27,7 @@ export default function Navbar() {
 
   // Mega Menu State
   const [megaMenuOpen, setMegaMenuOpen] = useState(false);
-  const [activeCategory, setActiveCategory] = useState(MEGA_MENU_DATA[0].id);
+  const [activeCategory, setActiveCategory] = useState(null);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -107,7 +107,7 @@ export default function Navbar() {
           {/* Danh mục sản phẩm (Has Mega Menu) */}
           <div 
             onMouseEnter={() => setMegaMenuOpen(true)}
-            onMouseLeave={() => setMegaMenuOpen(false)}
+            onMouseLeave={() => { setMegaMenuOpen(false); setActiveCategory(null); }}
             style={{ display: "flex" }}
           >
             <Link to="/products" style={{
@@ -118,63 +118,81 @@ export default function Navbar() {
               <Menu size={16} /> DANH MỤC SẢN PHẨM
             </Link>
 
-            {/* Mega Menu Dropdown */}
+            {/* Mega Menu Dropdown - Left sidebar: always fixed 280px, no width transition */}
             {megaMenuOpen && (
-              <div style={{
+              <div className="mega-menu-sidebar" style={{
                 position: "absolute", top: "100%", left: 0,
-                width: 900, background: "#fff", color: "var(--text)",
+                width: 280,
+                background: "#fcfcfc", color: "var(--text)",
                 boxShadow: "0 15px 40px rgba(0,0,0,0.12)",
-                display: "flex", borderTop: "3px solid var(--pk-pink)", zIndex: 999,
-                minHeight: 450, borderRadius: "0 0 8px 8px", overflow: "hidden"
+                borderTop: "3px solid var(--pk-pink)", zIndex: 999,
+                borderRadius: "0 0 8px 8px",
+                borderRight: activeCategory ? "1px solid var(--border)" : "none"
               }}>
-                {/* Left Sidebar */}
-                <div style={{ width: 280, borderRight: "1px solid var(--border)", padding: "16px 0", background: "#fcfcfc" }}>
+                {/* Left Sidebar - category level 2 */}
+                <div style={{ padding: "16px 0" }}>
                    {MEGA_MENU_DATA.map(cat => (
-                     <div key={cat.id} 
+                     <div key={cat.id}
                           onMouseEnter={() => setActiveCategory(cat.id)}
                           onClick={() => {
                              navigate(`/products?q=${encodeURIComponent(cat.label)}`);
                              setMegaMenuOpen(false);
+                             setActiveCategory(null);
                           }}
                           style={{
                             display: "flex", alignItems: "center", justifyContent: "space-between",
                             padding: "12px 20px", cursor: "pointer",
-                            background: activeCategory === cat.id ? "#fff" : "transparent",
+                            background: activeCategory === cat.id ? "var(--pk-pink-light)" : "transparent",
                             color: activeCategory === cat.id ? "var(--pk-pink)" : "var(--text)",
                             fontWeight: activeCategory === cat.id ? 700 : 500,
                             borderLeft: `3px solid ${activeCategory === cat.id ? "var(--pk-pink)" : "transparent"}`,
-                            fontSize: "0.85rem", transition: "all 0.2s ease"
+                            fontSize: "0.85rem", transition: "all 0.15s ease"
                           }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          {cat.icon} {cat.label}
-                        </div>
-                        <ChevronRight size={16} color={activeCategory === cat.id ? "var(--pk-pink)" : "#ccc"}/>
+                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                         {cat.icon} {cat.label}
+                       </div>
+                       <ChevronRight size={16} color={activeCategory === cat.id ? "var(--pk-pink)" : "#ccc"} />
                      </div>
                    ))}
                 </div>
-                {/* Right Content */}
-                <div style={{ flex: 1, padding: 32, background: "#fff" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 32px" }}>
-                    {MEGA_MENU_DATA.find(c => c.id === activeCategory)?.sub.map(subItem => (
-                      <Link to={`/products?q=${encodeURIComponent(subItem)}`} key={subItem} 
-                            onClick={() => setMegaMenuOpen(false)}
-                            style={{ 
-                              fontSize: "0.95rem", color: "var(--text)", textDecoration: "none", 
-                              padding: "6px 0", transition: "all 0.2s", fontWeight: 500
-                            }}
-                            onMouseEnter={e => {
-                               e.target.style.color = "var(--pk-pink)";
-                               e.target.style.transform = "translateX(4px)";
-                            }}
-                            onMouseLeave={e => {
-                               e.target.style.color = "var(--text)";
-                               e.target.style.transform = "translateX(0)";
-                            }}>
-                         {subItem}
-                      </Link>
-                    ))}
+
+                {/* Right panel - absolutely positioned so it NEVER affects left sidebar width */}
+                {activeCategory && (
+                  <div
+                    className="mega-menu-panel"
+                    onMouseEnter={() => setActiveCategory(activeCategory)}
+                    style={{
+                      position: "absolute", top: 0, left: "100%",
+                      width: 620, minHeight: "100%",
+                      background: "#fff", padding: 32,
+                      boxShadow: "8px 8px 30px rgba(0,0,0,0.10)",
+                      borderTop: "3px solid var(--pk-pink)",
+                      borderRadius: "0 0 8px 0",
+                      zIndex: 1000
+                    }}
+                  >
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 32px" }}>
+                      {MEGA_MENU_DATA.find(c => c.id === activeCategory)?.sub.map(subItem => (
+                        <Link to={`/products?q=${encodeURIComponent(subItem)}`} key={subItem}
+                              onClick={() => { setMegaMenuOpen(false); setActiveCategory(null); }}
+                              style={{
+                                fontSize: "0.95rem", color: "var(--text)", textDecoration: "none",
+                                padding: "6px 0", transition: "all 0.2s", fontWeight: 500
+                              }}
+                              onMouseEnter={e => {
+                                e.target.style.color = "var(--pk-pink)";
+                                e.target.style.transform = "translateX(4px)";
+                              }}
+                              onMouseLeave={e => {
+                                e.target.style.color = "var(--text)";
+                                e.target.style.transform = "translateX(0)";
+                              }}>
+                          {subItem}
+                        </Link>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -183,9 +201,8 @@ export default function Navbar() {
           {[
             { label: "SẢN PHẨM MỚI", link: "/products?cat=SẢN PHẨM MỚI" },
             { label: "❤️ DEAL HOT DƯỚI 100K ❤️", link: "/products?maxPrice=100000" },
-            { label: "SKIN CARE", link: "/products?cat=Skincare" },
-            // { label: "MAKE UP", link: "/products?cat=Makeup" },
-            // { label: "AI INSIGHTS", link: "/ai-analytics" },
+            { label: "PINKY BEAUTY", link: "/news" },
+            { label: "AI INSIGHTS", link: "/ai-analytics" },
             { label: "TRA CỨU ĐƠN HÀNG", link: "/account" },
           ].map(item => (
             <Link key={item.label} to={item.link} 

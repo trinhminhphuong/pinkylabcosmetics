@@ -12,7 +12,35 @@ export default function PaymentReturnPage() {
 
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("Đang xác nhận thanh toán với VNPay...");
-  const hasRun = useRef(false); // Prevent React StrictMode double-invoke
+  const [elapsed, setElapsed] = useState(0);   // đếm giây chờ
+  const [countdown, setCountdown] = useState(5); // đếm ngược sau success
+  const hasRun = useRef(false);
+  const timerRef = useRef(null);
+  const elapsedRef = useRef(null);
+
+  // Bộ đếm giây khi đang loading
+  useEffect(() => {
+    if (status !== "loading") { clearInterval(elapsedRef.current); return; }
+    elapsedRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(elapsedRef.current);
+  }, [status]);
+
+  // Đếm ngược 5s khi success rồi về trang chủ
+  useEffect(() => {
+    if (status !== "success") return;
+    setCountdown(5);
+    timerRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          navigate("/");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [status, navigate]);
 
   useEffect(() => {
     if (hasRun.current) return; // Already running — skip
@@ -29,29 +57,44 @@ export default function PaymentReturnPage() {
         return;
       }
 
-      // ── Bước 2: Poll /payment/status/{txnRef} cho đến khi IPN cập nhật DB ──
-      // Backend enum: PENDING | SUCCESS | FAILED
+      // ── Bước 2: Poll /payment/status/{txnRef} cho đến khi DB xác nhận ──────
+      // Không fallback — chờ DB trả về SUCCESS thật sự
       let dbStatus = "PENDING";
-      if (txnRef) {
-        setMessage("Đang xác nhận với máy chủ...");
-        for (let i = 0; i < 6; i++) {
-          try {
-            const res = await PaymentService.paymentStatus(txnRef);
-            dbStatus = res?.data || res || "PENDING";
-            if (dbStatus === "SUCCESS" || dbStatus === "FAILED") break;
-          } catch (e) {
-            // 404 = IPN chưa về, tiếp tục đợi
-          }
-          await new Promise(r => setTimeout(r, 2000));
+      if (!txnRef) {
+        setStatus("failed");
+        setMessage("Không tìm thấy mã giao dịch. Vui lòng liên hệ hỗ trợ.");
+        return;
+      }
+
+      setMessage("Đang chờ xác nhận từ máy chủ...");
+
+      // Poll với backoff: 2s, 3s, 3s, 5s, 5s, 5s, 10s, 10s, 10s, 10s... (tổng ~63s)
+      const delays = [2000, 3000, 3000, 5000, 5000, 5000, 10000, 10000, 10000, 10000];
+      for (let i = 0; i < delays.length; i++) {
+        await new Promise(r => setTimeout(r, delays[i]));
+        try {
+          const res = await PaymentService.paymentStatus(txnRef);
+          const rawStatus = res?.data?.data ?? res?.data ?? res;
+          dbStatus = typeof rawStatus === "string" ? rawStatus.toUpperCase() : String(rawStatus).toUpperCase();
+          console.log(`[PaymentReturn] Poll ${i + 1}/${delays.length}: txnRef=${txnRef}, dbStatus=${dbStatus}`);
+          if (dbStatus === "SUCCESS" || dbStatus === "FAILED") break;
+        } catch (e) {
+          console.log(`[PaymentReturn] Poll ${i + 1}/${delays.length}: not updated yet (${e?.response?.status || e?.message})`);
         }
-      } else {
-        // Không có txnRef, tin VNPay responseCode
-        dbStatus = "SUCCESS";
+        // Chỉ cập nhật text mô tả, giây sẽ tự đếm riêng
+        setMessage("Đang chờ xác nhận thanh toán...");
       }
 
       if (dbStatus === "FAILED") {
         setStatus("failed");
         setMessage("Giao dịch bị từ chối bởi ngân hàng. Vui lòng thử lại.");
+        return;
+      }
+
+      // Nếu sau tất cả các lần poll DB vẫn là PENDING → timeout, báo lỗi cho user
+      if (dbStatus === "PENDING") {
+        setStatus("failed");
+        setMessage(`Hệ thống chưa xác nhận được giao dịch. Mã GD: ${txnRef}. Vui lòng chờ và kiểm tra lại đơn hàng, hoặc liên hệ hỗ trợ.`);
         return;
       }
 
@@ -142,7 +185,9 @@ export default function PaymentReturnPage() {
             <h2 style={{ fontFamily: "Playfair Display,serif", fontSize: "1.6rem", fontWeight: 700, marginBottom: 12 }}>
               Đang xử lý
             </h2>
-            <p style={{ color: "var(--text-muted)", lineHeight: 1.8 }}>{message}</p>
+            <p style={{ color: "var(--text-muted)", lineHeight: 1.8 }}>
+              {message}{elapsed > 0 ? ` (${elapsed}s)` : ""}
+            </p>
           </>
         )}
 
@@ -159,12 +204,15 @@ export default function PaymentReturnPage() {
             <h2 style={{ fontFamily: "Playfair Display,serif", fontSize: "1.9rem", fontWeight: 700, marginBottom: 12 }}>
               Thanh toán thành công! 🎉
             </h2>
-            <p style={{ color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 28 }}>
+            <p style={{ color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 16 }}>
               Đơn hàng đã được đặt và xác nhận thanh toán qua <strong>VNPay</strong>.
+            </p>
+            <p style={{ color: "var(--pk-pink)", fontWeight: 600, fontSize: "0.9rem", marginBottom: 24 }}>
+              Tự động chuyển về trang chủ sau <strong>{countdown}</strong> giây...
             </p>
             <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
               <button onClick={() => navigate("/account")} className="btn-outline">Xem đơn hàng</button>
-              <button onClick={() => navigate("/")} className="btn-primary">Về trang chủ</button>
+              <button onClick={() => { clearInterval(timerRef.current); navigate("/"); }} className="btn-primary">Về trang chủ</button>
             </div>
           </>
         )}

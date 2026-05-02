@@ -1,59 +1,87 @@
 import { useState, useEffect, useRef } from "react";
 import { MessageCircle, X, Send, Bot } from "lucide-react";
+import ChatProductCard from "./ChatProductCard";
+import { useCart, useWishlist } from "../context/store";
+import { sendChatMessage, toProductCard } from "../services/aiClient";
 
-const BOT_RESPONSES = {
-  default: "Xin chào! Tôi có thể giúp bạn tìm sản phẩm phù hợp. Bạn đang quan tâm đến loại mỹ phẩm nào? 💕",
-  skincare: "Chúng tôi có dòng Skincare đầy đủ: Serum, Kem dưỡng, Toner, Kem chống nắng. Bạn muốn tư vấn sản phẩm nào?",
-  makeup: "Dòng Makeup của PinkyLab gồm: Son môi, Phấn má hồng, Phấn nền và Bảng mắt. Bạn muốn biết thêm về sản phẩm nào?",
-  giá: "Sản phẩm PinkyLab có giá từ 220.000đ đến 720.000đ. Bạn có thể vào trang Sản phẩm để lọc theo giá nhé!",
-  giao: "Chúng tôi giao hàng toàn quốc trong 2-5 ngày. Miễn phí giao hàng cho đơn từ 500.000đ!",
-  đổi: "Chính sách đổi trả trong 30 ngày nếu sản phẩm lỗi hoặc không đúng mô tả. Liên hệ 1800 6868 để được hỗ trợ.",
-  khuyến: "Nhập mã PINKY10 để giảm 10% cho đơn đầu tiên! Theo dõi fanpage để cập nhật khuyến mãi mới nhất.",
-};
-
-function getBotReply(text) {
-  const lower = text.toLowerCase();
-  if (lower.includes("skincare") || lower.includes("da") || lower.includes("serum") || lower.includes("kem")) return BOT_RESPONSES.skincare;
-  if (lower.includes("makeup") || lower.includes("son") || lower.includes("phấn") || lower.includes("mắt")) return BOT_RESPONSES.makeup;
-  if (lower.includes("giá") || lower.includes("bao nhiêu") || lower.includes("tiền")) return BOT_RESPONSES.giá;
-  if (lower.includes("giao") || lower.includes("ship") || lower.includes("nhận")) return BOT_RESPONSES.giao;
-  if (lower.includes("đổi") || lower.includes("trả") || lower.includes("hoàn")) return BOT_RESPONSES.đổi;
-  if (lower.includes("giảm") || lower.includes("mã") || lower.includes("khuyến") || lower.includes("ưu đãi")) return BOT_RESPONSES.khuyến;
-  return "Cảm ơn bạn đã nhắn tin! Để được tư vấn chi tiết hơn, vui lòng gọi hotline 1800 6868 hoặc email hello@pinkylab.vn 💌";
-}
+const DEFAULT_SUGGESTIONS = ["Da dầu mụn dưới 300k", "Son đi học tự nhiên", "Kem chống nắng còn hàng", "Sản phẩm đang sale"];
+const INITIAL_MESSAGE = "Xin chào! Tôi có thể giúp bạn tìm sản phẩm phù hợp. Bạn đang quan tâm đến loại mỹ phẩm nào?";
 
 export default function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { id: 1, from: "bot", text: BOT_RESPONSES.default, time: new Date() }
+    { id: 1, from: "bot", text: INITIAL_MESSAGE, time: new Date(), suggestions: DEFAULT_SUGGESTIONS }
   ]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const bottomRef = useRef(null);
+  const { items: cartItems } = useCart();
+  const { ids: wishlistIds } = useWishlist();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typing]);
 
-  const sendMessage = () => {
-    if (!input.trim()) return;
-    const userMsg = { id: Date.now(), from: "user", text: input.trim(), time: new Date() };
+  const sendMessage = async (text = input) => {
+    const content = text.trim();
+    if (!content || typing) return;
+
+    const userMsg = { id: Date.now(), from: "user", text: content, time: new Date() };
+    const history = messages
+      .filter(msg => msg.text)
+      .slice(-8)
+      .map(msg => ({ role: msg.from === "user" ? "user" : "assistant", content: msg.text }));
+
     setMessages(prev => [...prev, userMsg]);
     setInput("");
     setTyping(true);
-    setTimeout(() => {
+
+    try {
+      const response = await sendChatMessage({
+        message: content,
+        history,
+        limit: 4,
+        cart_product_ids: cartItems.map(item => String(item.id)),
+        wishlist_product_ids: wishlistIds.map(String),
+      });
+
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          from: "bot",
+          text: response.reply,
+          time: new Date(),
+          products: (response.items || []).map(toProductCard),
+          suggestions: response.suggestions || DEFAULT_SUGGESTIONS,
+        }
+      ]);
+    } catch {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          from: "bot",
+          text: "Mình đang gặp lỗi kết nối AI. Bạn thử lại sau hoặc xem trực tiếp trang Sản phẩm nhé.",
+          time: new Date(),
+          suggestions: DEFAULT_SUGGESTIONS,
+          error: true,
+        }
+      ]);
+    } finally {
       setTyping(false);
-      setMessages(prev => [...prev, { id: Date.now() + 1, from: "bot", text: getBotReply(userMsg.text), time: new Date() }]);
-    }, 900);
+    }
   };
 
-  const handleKey = (e) => { if (e.key === "Enter") sendMessage(); };
+  const handleKey = (e) => {
+    if (e.key === "Enter") sendMessage();
+  };
 
   const fmtTime = (d) => d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  const latestSuggestions = [...messages].reverse().find(msg => msg.from === "bot" && msg.suggestions?.length)?.suggestions || DEFAULT_SUGGESTIONS;
 
   return (
     <>
-      {/* FAB Button */}
       <button onClick={() => setOpen(o => !o)} style={{
         position: "fixed", bottom: 28, right: 28, zIndex: 200,
         width: 56, height: 56, borderRadius: "50%",
@@ -67,11 +95,10 @@ export default function ChatWidget() {
         {open ? <X size={22} /> : <MessageCircle size={22} />}
       </button>
 
-      {/* Chat window */}
       {open && (
         <div style={{
           position: "fixed", bottom: 96, right: 28, zIndex: 200,
-          width: 340, maxHeight: 480,
+          width: "min(380px, calc(100vw - 32px))", maxHeight: "min(640px, calc(100vh - 120px))",
           background: "var(--surface)",
           borderRadius: "var(--radius-xl)",
           boxShadow: "0 20px 60px rgba(45,26,38,0.2)",
@@ -80,7 +107,6 @@ export default function ChatWidget() {
           overflow: "hidden",
           animation: "fadeUp 0.3s ease"
         }}>
-          {/* Header */}
           <div style={{
             padding: "16px 18px",
             background: "linear-gradient(135deg, var(--pk-pink), #d44070)",
@@ -103,13 +129,19 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          {/* Messages */}
           <div style={{ flex: 1, overflowY: "auto", padding: "16px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
             {messages.map(msg => (
-              <div key={msg.id} style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: msg.from === "user" ? "flex-end" : "flex-start" }}>
-                <div className={msg.from === "user" ? "bubble-user" : "bubble-bot"}>
+              <div key={msg.id} style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: msg.from === "user" ? "flex-end" : "flex-start" }}>
+                <div className={msg.from === "user" ? "bubble-user" : "bubble-bot"} style={msg.error ? { color: "#ef4444" } : undefined}>
                   {msg.text}
                 </div>
+
+                {msg.products?.length > 0 && (
+                  <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
+                    {msg.products.map(product => <ChatProductCard key={product.id} product={product} />)}
+                  </div>
+                )}
+
                 <span style={{ fontSize: "0.65rem", color: "var(--text-muted)", paddingInline: 4 }}>
                   {fmtTime(msg.time)}
                 </span>
@@ -125,26 +157,25 @@ export default function ChatWidget() {
             <div ref={bottomRef} />
           </div>
 
-          {/* Quick replies */}
           <div style={{ padding: "8px 14px 0", display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {["Skincare", "Makeup", "Giao hàng", "Khuyến mãi"].map(q => (
-              <button key={q} onClick={() => { setInput(q); }} style={{
+            {latestSuggestions.slice(0, 4).map(q => (
+              <button key={q} onClick={() => sendMessage(q)} disabled={typing} style={{
                 fontSize: "0.72rem", padding: "4px 10px", borderRadius: 999,
                 border: "1.5px solid var(--pk-pink)", color: "var(--pk-pink)",
-                background: "var(--pk-pink-light)", cursor: "pointer", transition: "all 0.15s"
+                background: "var(--pk-pink-light)", cursor: typing ? "not-allowed" : "pointer", transition: "all 0.15s"
               }}>
                 {q}
               </button>
             ))}
           </div>
 
-          {/* Input */}
           <div style={{ padding: "10px 14px 14px", display: "flex", gap: 8, alignItems: "center" }}>
             <input
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
               placeholder="Nhập tin nhắn…"
+              disabled={typing}
               style={{
                 flex: 1, padding: "9px 14px", borderRadius: 999,
                 border: "1.5px solid var(--border)",
@@ -152,10 +183,10 @@ export default function ChatWidget() {
                 outline: "none", color: "var(--text)"
               }}
             />
-            <button onClick={sendMessage} style={{
+            <button onClick={() => sendMessage()} disabled={typing || !input.trim()} style={{
               width: 38, height: 38, borderRadius: "50%",
-              background: "linear-gradient(135deg, var(--pk-pink), #d44070)",
-              border: "none", cursor: "pointer",
+              background: typing || !input.trim() ? "#ddd" : "linear-gradient(135deg, var(--pk-pink), #d44070)",
+              border: "none", cursor: typing || !input.trim() ? "not-allowed" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
               boxShadow: "0 3px 10px rgba(232,88,122,0.4)"
             }}>

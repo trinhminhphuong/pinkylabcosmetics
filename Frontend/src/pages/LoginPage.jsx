@@ -18,6 +18,8 @@ export default function LoginPage() {
 
   const set = (k, v) => { setForm(f => ({ ...f, [k]: v })); setErrors(e => ({ ...e, [k]: "" })); };
 
+  const PW_REGEX = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
+
   const validateLogin = () => {
     const e = {};
     if (!form.email.includes("@")) e.email = "Email không hợp lệ";
@@ -30,7 +32,7 @@ export default function LoginPage() {
     const e = {};
     if (!form.name.trim())         e.name = "Vui lòng nhập họ tên";
     if (!form.email.includes("@")) e.email = "Email không hợp lệ";
-    if (form.password.length < 8)  e.password = "Mật khẩu phải có ít nhất 8 ký tự";
+    if (!PW_REGEX.test(form.password)) e.password = "Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt";
     if (form.password !== form.confirmPw) e.confirmPw = "Mật khẩu không khớp";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -107,7 +109,7 @@ export default function LoginPage() {
     try {
       const nameParts = form.name.trim().split(" ");
       let lastName = form.name.trim();
-      let firstName = "Khách:"; //tên khách
+      let firstName = "Khách";
       if (nameParts.length > 1) {
         lastName = nameParts.pop();
         firstName = nameParts.join(" ");
@@ -232,7 +234,7 @@ export default function LoginPage() {
             </Field>
             <Field label="Mật khẩu" error={errors.password}>
               <div style={{ position: "relative" }}>
-                <input className="input-pk" type={showPw ? "text" : "password"} placeholder="••••••••" value={form.password} onChange={e => set("password", e.target.value)} style={{ paddingRight: 44 }} />
+                <input className="input-pk" type={showPw ? "text" : "password"} placeholder="Vui lòng nhập mật khẩu" value={form.password} onChange={e => set("password", e.target.value)} style={{ paddingRight: 44 }} />
                 <button type="button" onClick={() => setShowPw(s => !s)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -259,14 +261,17 @@ export default function LoginPage() {
             </Field>
             <Field label="Mật khẩu" error={errors.password}>
               <div style={{ position: "relative" }}>
-                <input className="input-pk" type={showPw ? "text" : "password"} placeholder="Ít nhất 8 ký tự" value={form.password} onChange={e => set("password", e.target.value)} style={{ paddingRight: 44 }} />
+                <input className="input-pk" type={showPw ? "text" : "password"} placeholder="Vui lòng nhập mật khẩu" value={form.password} onChange={e => set("password", e.target.value)} style={{ paddingRight: 44 }} />
                 <button type="button" onClick={() => setShowPw(s => !s)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.5 }}>
+                Mật khẩu có chứa ít nhất 8 ký tự, chứa chữ hoa, chữ thường, số và ký tự đặc biệt.
+              </p>
             </Field>
             <Field label="Xác nhận mật khẩu" error={errors.confirmPw}>
-              <input className="input-pk" type="password" placeholder="Nhập lại mật khẩu" value={form.confirmPw} onChange={e => set("confirmPw", e.target.value)} />
+              <input className="input-pk" type="password" placeholder="Vui lòng nhập lại mật khẩu" value={form.confirmPw} onChange={e => set("confirmPw", e.target.value)} />
             </Field>
             <button type="submit" disabled={loading} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "13px" }}>
               {loading ? "Đang xử lý..." : "Tạo tài khoản"}
@@ -294,7 +299,7 @@ export default function LoginPage() {
             <h3 style={{ textAlign: "center", fontSize: "1.1rem", fontWeight: 700 }}>Xác Thực OTP</h3>
             <p style={{ textAlign: "center", fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: 8 }}>Mã gồm 6 chữ số đã được gửi tới <strong>{form.email}</strong></p>
             <Field label="Mã OTP" error={errors.otp}>
-              <input className="input-pk" placeholder="Nhập mã OTP" value={form.otp} onChange={e => set("otp", e.target.value)} />
+              <input className="input-pk" placeholder="Vui lòng nhập mã OTP" value={form.otp} onChange={e => set("otp", e.target.value)} />
             </Field>
             <button type="submit" disabled={loading} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "13px" }}>
               {loading ? "Đang kiểm tra..." : "Xác nhận OTP"}
@@ -307,7 +312,7 @@ export default function LoginPage() {
             <h3 style={{ textAlign: "center", fontSize: "1.1rem", fontWeight: 700 }}>Xác Thực Tài Khoản</h3>
             <p style={{ textAlign: "center", fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: 8 }}>Mã gồm 6 chữ số đã được gửi tới <strong>{form.email}</strong></p>
             <Field label="Mã OTP" error={errors.otp}>
-              <input className="input-pk" placeholder="Nhập mã OTP" value={form.otp} onChange={e => set("otp", e.target.value)} />
+              <input className="input-pk" placeholder="Vui lòng nhập mã OTP" value={form.otp} onChange={e => set("otp", e.target.value)} />
             </Field>
             <button type="submit" disabled={loading} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "13px" }}>
               {loading ? "Đang kiểm tra..." : "Xác nhận tài khoản"}
@@ -321,14 +326,17 @@ export default function LoginPage() {
             <h3 style={{ textAlign: "center", fontSize: "1.1rem", fontWeight: 700 }}>Đặt Mật Khẩu Mới</h3>
             <Field label="Mật khẩu mới" error={errors.password}>
               <div style={{ position: "relative" }}>
-                <input className="input-pk" type={showPw ? "text" : "password"} placeholder="Ít nhất 8 ký tự" value={form.password} onChange={e => set("password", e.target.value)} style={{ paddingRight: 44 }} />
+                <input className="input-pk" type={showPw ? "text" : "password"} placeholder="Vui lòng nhập mật khẩu mới" value={form.password} onChange={e => set("password", e.target.value)} style={{ paddingRight: 44 }} />
                 <button type="button" onClick={() => setShowPw(s => !s)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 5, lineHeight: 1.5 }}>
+                Mật khẩu có chứa ít nhất 8 ký tự, chứa chữ hoa, chữ thường, số và ký tự đặc biệt.
+              </p>
             </Field>
             <Field label="Xác nhận mật khẩu" error={errors.confirmPw}>
-              <input className="input-pk" type="password" placeholder="Nhập lại mật khẩu" value={form.confirmPw} onChange={e => set("confirmPw", e.target.value)} />
+              <input className="input-pk" type="password" placeholder="Vui lòng nhập lại mật khẩu" value={form.confirmPw} onChange={e => set("confirmPw", e.target.value)} />
             </Field>
             <button type="submit" disabled={loading} className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "13px" }}>
               {loading ? "Đang xử lý..." : "Cập nhật mật khẩu"}

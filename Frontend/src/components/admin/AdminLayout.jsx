@@ -9,7 +9,8 @@ import {
   Bell,
   Search,
   Menu,
-  Award
+  Award,
+  Newspaper
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../../context/store";
@@ -27,6 +28,7 @@ export default function AdminLayout() {
     { path: "/admin/brands", label: "Thương hiệu", icon: <Award size={20} /> },
     { path: "/admin/orders", label: "Đơn hàng", icon: <ShoppingCart size={20} /> },
     { path: "/admin/customers", label: "Khách hàng", icon: <Users size={20} /> },
+    { path: "/admin/news", label: "Tin tức / Blog", icon: <Newspaper size={20} /> },
   ];
 
   const handleLogout = () => {
@@ -102,7 +104,32 @@ export default function AdminLayout() {
         </nav>
 
         {/* Bottom Actions */}
-        <div style={{ padding: "16px", borderTop: "1px solid var(--border)" }}>
+        <div style={{ padding: "16px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 4 }}>
+          {/* Back to storefront */}
+          <Link
+            to="/"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              padding: "12px 16px",
+              borderRadius: "var(--radius-md)",
+              color: "var(--pk-pink)",
+              background: "var(--pk-pink-light)",
+              fontWeight: 600,
+              textDecoration: "none",
+              fontSize: "0.875rem",
+              transition: "all 0.2s ease",
+              justifyContent: sidebarOpen ? "flex-start" : "center",
+              marginBottom: 4
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "var(--pk-pink)"; e.currentTarget.style.color = "#fff"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "var(--pk-pink-light)"; e.currentTarget.style.color = "var(--pk-pink)"; }}
+          >
+            <span style={{ display: "flex", alignItems: "center", flexShrink: 0, fontSize: "1.1rem" }}>🏠</span>
+            {sidebarOpen && <span>Về trang chủ</span>}
+          </Link>
+
           <button 
             onClick={handleLogout}
             style={{

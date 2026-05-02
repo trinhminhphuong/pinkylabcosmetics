@@ -66,6 +66,17 @@ export function getAnalyticsSummary(periodDays = 30) {
   return aiFetch(`/analytics/summary?period_days=${periodDays}`);
 }
 
+export function sendChatMessage(payload = {}) {
+  return aiFetch("/chat", {
+    method: "POST",
+    body: JSON.stringify({
+      session_id: getAiSessionId(),
+      limit: 4,
+      ...payload,
+    }),
+  });
+}
+
 export function toProductCard(item) {
   return {
     id: item.id,
@@ -80,7 +91,10 @@ export function toProductCard(item) {
     images: item.image ? [item.image] : [],
     badge: item.badge,
     description: item.description,
+    stock: item.stock,
     inStock: item.in_stock,
+    tags: item.tags || [],
+    attributes: item.attributes || {},
     aiScore: item.score,
     aiReason: item.reason || item.matched_reason,
   };

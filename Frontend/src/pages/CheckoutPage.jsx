@@ -5,7 +5,7 @@ import { formatPrice } from "../data/products";
 import { Check, CreditCard, Truck, Banknote, ShoppingBag } from "lucide-react";
 import { ShippingMethodService, PaymentMethodService, CartService, OrderService, PaymentService } from "../services/apiServices";
 
-const STEPS = ["Thông tin", "Vận chuyển", "Thanh toán", "Xác nhận"];
+const STEPS = ["Thông tin", "Thanh toán", "Xác nhận"];
 const PROVINCES = ["An Giang", "Bà Rịa - Vũng Tàu", "Bắc Giang", "Bắc Kạn", "Bạc Liêu", "Bắc Ninh", "Bến Tre", "Bình Định", "Bình Dương", "Bình Phước", "Bình Thuận", "Cà Mau", "Cần Thơ", "Cao Bằng", "Đà Nẵng", "Đắk Lắk", "Đắk Nông", "Điện Biên", "Đồng Nai", "Đồng Tháp", "Gia Lai", "Hà Giang", "Hà Nam", "Hà Nội", "Hà Tĩnh", "Hải Dương", "Hải Phòng", "Hậu Giang", "Hòa Bình", "Hưng Yên", "Khánh Hòa", "Kiên Giang", "Kon Tum", "Lai Châu", "Lâm Đồng", "Lạng Sơn", "Lào Cai", "Long An", "Nam Định", "Nghệ An", "Ninh Bình", "Ninh Thuận", "Phú Thọ", "Phú Yên", "Quảng Bình", "Quảng Nam", "Quảng Ngãi", "Quảng Ninh", "Quảng Trị", "Sóc Trăng", "Sơn La", "Tây Ninh", "Thái Bình", "Thái Nguyên", "Thanh Hóa", "Thừa Thiên Huế", "Tiền Giang", "TP. Hồ Chí Minh", "Trà Vinh", "Tuyên Quang", "Vĩnh Long", "Vĩnh Phúc", "Yên Bái"];
 
 export default function CheckoutPage() {
@@ -34,9 +34,15 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (user) {
       const matchCity = PROVINCES.find(p => p.toLowerCase() === (user.address?.state || "").trim().toLowerCase()) || "";
+      const rawName = [user.firstName, user.lastName].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+      // Lọc bỏ prefix mặc định "Khách" hoặc "admin"
+      const SKIP = ["khách", "admin", "guest", "user"];
+      const cleanName = SKIP.some(s => rawName.toLowerCase() === s || rawName.toLowerCase().startsWith(s + " "))
+        ? (user.fullName && !SKIP.some(s => user.fullName.toLowerCase() === s) ? user.fullName : "")
+        : (rawName || user.fullName || "");
       setForm(prev => ({
         ...prev,
-        name: prev.name || [user.firstName, user.lastName].filter(Boolean).join(" ").replace(/\s+/g, " ").trim() || user.fullName || user.email?.split("@")[0] || "",
+        name: prev.name || cleanName || "",
         email: prev.email || user.email || "",
         phone: prev.phone || user.phone || "",
         address: prev.address || user.address?.streetAddress || "",
@@ -107,6 +113,7 @@ export default function CheckoutPage() {
     if (step === 0 && !validate()) return;
     if (step < STEPS.length - 1) setStep(s => s + 1);
   };
+
 
   const handleOrder = async () => {
     setLoading(true);
@@ -257,13 +264,13 @@ export default function CheckoutPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                 <h3 style={{ fontWeight: 700, marginBottom: 4 }}>Thông tin liên hệ</h3>
                 <Field label="Họ và tên *" error={errors.name}>
-                  <input className="input-pk" placeholder="Vui lòng nhập họ tên" value={form.name} onChange={e => set("name", e.target.value)} />
+                  <input className="input-pk" placeholder="Trịnh Minh Phương" value={form.name} onChange={e => set("name", e.target.value)} />
                 </Field>
                 <Field label="Email *" error={errors.email}>
-                  <input className="input-pk" type="email" placeholder="Vui lòng nhập email" value={form.email} onChange={e => set("email", e.target.value)} />
+                  <input className="input-pk" type="email" placeholder="email@example.com" value={form.email} onChange={e => set("email", e.target.value)} />
                 </Field>
                 <Field label="Số điện thoại *" error={errors.phone}>
-                  <input className="input-pk" placeholder="Vui lòng nhập số điện thoại" value={form.phone} onChange={e => set("phone", e.target.value)} />
+                  <input className="input-pk" placeholder="0866772011" value={form.phone} onChange={e => set("phone", e.target.value)} />
                 </Field>
                 <Field label="Địa chỉ giao hàng *" error={errors.address}>
                   <input className="input-pk" placeholder="Số nhà, đường, phường, quận..." value={form.address} onChange={e => set("address", e.target.value)} />
@@ -279,26 +286,27 @@ export default function CheckoutPage() {
                 <Field label="Ghi chú (không bắt buộc)">
                   <textarea className="input-pk" rows={3} placeholder="Ghi chú thêm cho đơn hàng..." value={form.note} onChange={e => set("note", e.target.value)} style={{ resize: "vertical" }} />
                 </Field>
+
+                {/* Vận chuyển ghép vào step 1 */}
+                {shippingMethods.length > 0 && (
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>Phương thức vận chuyển *</label>
+                    {shippingMethods.map(opt => (
+                      <label key={opt.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: "var(--radius-md)", border: `2px solid ${shipMethod === opt.id ? "var(--pk-pink)" : "var(--border)"}`, marginBottom: 10, cursor: "pointer", background: shipMethod === opt.id ? "var(--pk-pink-light)" : "var(--surface)", transition: "all 0.2s" }}>
+                        <input type="radio" name="ship" value={opt.id} checked={shipMethod === opt.id} onChange={() => setShipMethod(opt.id)} style={{ accentColor: "var(--pk-pink)" }} />
+                        <Truck size={16} color="var(--pk-pink)" />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>{opt.name.replace(/chu\?n/gi, "chuẩn").replace(/\?\?\?/g, "")}</div>
+                          <div style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>{opt.description || "Giao hàng tận nơi"} · {formatPrice(opt.price)}</div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
             {step === 1 && (
-              <div>
-                <h3 style={{ fontWeight: 700, marginBottom: 20 }}>Phương thức vận chuyển</h3>
-                {shippingMethods.length === 0 ? <p>Chưa có phương thức vận chuyển nào.</p> : shippingMethods.map(opt => (
-                  <label key={opt.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderRadius: "var(--radius-md)", border: `2px solid ${shipMethod === opt.id ? "var(--pk-pink)" : "var(--border)"}`, marginBottom: 12, cursor: "pointer", background: shipMethod === opt.id ? "var(--pk-pink-light)" : "var(--surface)", transition: "all 0.2s" }}>
-                    <input type="radio" name="ship" value={opt.id} checked={shipMethod === opt.id} onChange={() => setShipMethod(opt.id)} style={{ accentColor: "var(--pk-pink)" }} />
-                    <Truck size={18} color="var(--pk-pink)" />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{opt.name.replace(/chu\?n/gi, "chuẩn").replace(/\?\?\?/g, "")}</div>
-                      <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{opt.description || "Giao hàng tận nơi"} · {formatPrice(opt.price)}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            )}
-
-            {step === 2 && (
               <div>
                 <h3 style={{ fontWeight: 700, marginBottom: 20 }}>Phương thức thanh toán</h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -340,7 +348,7 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {step === 3 && (
+            {step === 2 && (
               <div>
                 <h3 style={{ fontWeight: 700, marginBottom: 20 }}>Xác nhận đơn hàng</h3>
                 {[

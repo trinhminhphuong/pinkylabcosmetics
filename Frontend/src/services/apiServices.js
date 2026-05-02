@@ -61,6 +61,15 @@ export const ProductService = {
   removeTagFromProduct: (id, tagId) => api.delete(`/products/${id}/tags/${tagId}`).then(res => res.data),
 };
 
+// ==================== PRODUCT PROMOTION ====================
+export const PromotionService = {
+  getPromotionsByProduct: (productId) => api.get(`/products/${productId}/promotions`).then(res => res.data),
+  getPromotionById: (id) => api.get(`/product-promotions/${id}`).then(res => res.data),
+  createPromotion: (productId, data) => api.post(`/products/${productId}/promotions`, data).then(res => res.data),
+  updatePromotion: (id, data) => api.put(`/product-promotions/${id}`, data).then(res => res.data),
+  deletePromotion: (id) => api.delete(`/product-promotions/${id}`).then(res => res.data),
+};
+
 // ==================== CATEGORY ====================
 export const CategoryService = {
   getAllCategories: (params) => api.get('/categories', { params }).then(res => res.data),

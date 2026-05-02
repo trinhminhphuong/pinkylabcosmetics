@@ -14,6 +14,8 @@ import AccountPage from "./pages/AccountPage";
 import WishlistPage from "./pages/WishlistPage";
 import PaymentReturnPage from "./pages/PaymentReturnPage";
 import AiAnalyticsPage from "./pages/AiAnalyticsPage";
+import NewsPage from "./pages/NewsPage";
+import NewsDetailPage from "./pages/NewsDetailPage";
 
 // Admin Imports
 import AdminGuard from "./components/admin/AdminGuard";
@@ -24,6 +26,7 @@ import AdminCategories from "./pages/admin/AdminCategories";
 import AdminBrands from "./pages/admin/AdminBrands";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminCustomers from "./pages/admin/AdminCustomers";
+import AdminNews from "./pages/admin/AdminNews";
 
 function NotFound() {
   return (
@@ -53,9 +56,7 @@ function UserLayout() {
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => {
-    if (pathname.startsWith("/products")) {
-      window.scrollTo(0, 0);
-    }
+    window.scrollTo({ top: 0, behavior: "instant" });
   }, [pathname]);
   return null;
 }
@@ -80,6 +81,8 @@ export default function App() {
                   <Route path="/account"     element={<AccountPage />} />
                   <Route path="/wishlist"    element={<WishlistPage />} />
                   <Route path="/ai-analytics" element={<AiAnalyticsPage />} />
+                  <Route path="/news"          element={<NewsPage />} />
+                  <Route path="/news/:id"       element={<NewsDetailPage />} />
                   <Route path="/payment/vnpay/return" element={<PaymentReturnPage />} />
                   <Route path="*"            element={<NotFound />} />
                 </Route>
@@ -93,6 +96,7 @@ export default function App() {
                     <Route path="brands" element={<AdminBrands />} />
                     <Route path="orders" element={<AdminOrders />} />
                     <Route path="customers" element={<AdminCustomers />} />
+                    <Route path="news" element={<AdminNews />} />
                   </Route>
                 </Route>
               </Routes>
